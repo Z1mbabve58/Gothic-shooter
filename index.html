@@ -7,8 +7,7 @@
     <!-- Подключение Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- СЮДА ВСТАВЛЯТЬ ETHERS.JS: -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  
 <!-- Подключение Socket.io для матчинга -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
@@ -203,15 +202,10 @@
         <div class="top-panel">
             <button class="top-btn" id="btn-settings">⚙️ Settings</button>
             <button class="top-btn" id="btn-leaderboard-open">🏆 Leaderboard</button>
-            <button class="top-btn" id="btn-wallet">Connect Wallet</button>
+          
         </div>
 
-      <!-- Дропдаун кошелька -->
-        <div id="wallet-dropdown">
-            <div id="wallet-balance-row">Balance: <span id="wallet-balance-val">0.0000 ETH</span></div>
-            <button class="wallet-dropdown-btn" id="btn-copy-address">📋 Copy Address</button>
-            <button class="wallet-dropdown-btn" id="btn-disconnect-wallet">❌ Disconnect</button>
-        </div>
+     
 
         <!-- Невидимая кнопка поверх винтовки -->
         <button id="btn-train"><span id="start-text">CLICK TO SURVIVE</span></button>
