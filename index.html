@@ -851,7 +851,7 @@ walletBtn.innerText = `${shortAddress} (... ETH)`;
         }
 // === ПОДКЛЮЧЕНИЕ К СЕРВЕРУ И СМАРТ-КОНТРАКТУ ===
 // Пустые скобки заставят Socket.io автоматически подключиться к домену, на котором открыта игра
-const socket = io("https://94pttl-8080.csb.app/");
+const socket = io("https://gothic-shooter-1.onrender.com");
 const ESCROW_CONTRACT_ADDRESS = "0xCf69528544e1e4aFC42Bc0bdd56e292854EFB7f2";
 const ESCROW_ABI = [
     "function joinDuel(bytes32 matchId) external payable"
