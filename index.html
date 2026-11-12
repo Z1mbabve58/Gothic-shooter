@@ -6,6 +6,8 @@
     
     <!-- Подключение Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 
   
 <!-- Подключение Socket.io для матчинга -->
@@ -199,16 +201,35 @@
         
 
         <!-- 3 кнопки справа сверху (id сохранены для твоего JS) -->
+       <!-- 3 кнопки справа сверху (id сохранены для твоего JS) -->
         <div class="top-panel">
+            <button class="top-btn" id="btn-guide">📖 Guide</button> <!-- НОВАЯ КНОПКА -->
             <button class="top-btn" id="btn-settings">⚙️ Settings</button>
             <button class="top-btn" id="btn-leaderboard-open">🏆 Leaderboard</button>
-          
         </div>
 
      
 
         <!-- Невидимая кнопка поверх винтовки -->
         <button id="btn-train"><span id="start-text">CLICK TO SURVIVE</span></button>
+    </div>
+    <!-- Окно ГАЙДА -->
+    <div id="guide-modal" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(14, 14, 16, 0.96); border: 2px solid #ffaa00; border-radius: 12px; padding: 30px; display: none; flex-direction: column; gap: 16px; z-index: 150; box-shadow: 0 0 40px rgba(0,0,0,0.9); width: 480px; color: #fff;">
+        <h2 style="font-family: 'Pirata One', cursive; font-size: 36px; color: #ffaa00; text-align: center; margin-bottom: 5px;">HOW TO PLAY</h2>
+        
+        <div style="font-size: 15px; color: #d8dee9; line-height: 1.7; font-family: 'Share Tech Mono', monospace;">
+            <p style="margin-bottom: 12px;">🎯 <b>COMBAT:</b> Score more points by shooting skeletons in the <b>HEAD</b> or <b>HEART</b> (the glowing core).</p>
+            
+            <p style="margin-bottom: 12px;">🔥 <b>CAMPFIRE:</b> Press <b>[E]</b> near the fire to throw wood in. Keep the area illuminated!</p>
+            
+            <p style="margin-bottom: 12px;">🛡️ <b>DEFENSE:</b> Press <b>[E]</b> near damaged barricades to repair them and hold off the horde.</p>
+            
+            <p style="margin-bottom: 12px; border-top: 1px solid #333; padding-top: 12px;">⌨️ <b>CONTROLS:</b> WASD (Move) | SHIFT (Sprint) | SPACE (Jump) | 1-3 (Weapons) | ESC (Menu)</p>
+            
+            <p style="margin-top: 16px; text-align: center; color: #ff3333; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px rgba(255,0,0,0.5);">CLICK ON THE RIFLE IN THE MENU TO START!</p>
+        </div>
+        
+        <button id="btn-close-guide" style="font-size: 20px; margin-top: 10px; background:#ffaa00; color:#000; border:none; padding:10px 16px; cursor:pointer; font-family: 'Pirata One', cursive; border-radius: 6px; transition: 0.2s;">GOT IT</button>
     </div>
 
     <div id="settings-modal">
@@ -288,6 +309,43 @@
         const hud = document.getElementById('hud');
         let gameActive = false;
         let playerHp = 100;
+        let bossGltf = null;
+        const gltfLoader = new THREE.GLTFLoader();
+
+        Promise.all([
+            gltfLoader.loadAsync('golem.glb'),
+            gltfLoader.loadAsync('run.glb'),
+            gltfLoader.loadAsync('punch.glb'),
+            gltfLoader.loadAsync('kick.glb'),
+            gltfLoader.loadAsync('death.glb')
+        ]).then((results) => {
+            bossGltf = results[0]; 
+            bossGltf.animations = [
+                results[1].animations[0], // 0: run
+                results[2].animations[0], // 1: punch
+                results[3].animations[0], // 2: kick
+                results[4].animations[0]  // 3: death
+            ];
+            bossGltf.scene.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            console.log("Модель Голема и все 4 анимации успешно склеены!");
+        }).catch(err => console.error("Ошибка при загрузке файлов Голема:", err));
+
+        function crossFadeAnim(mob, newAnimName, duration = 0.2) {
+            if (!mob.userData.actions || !mob.userData.actions[newAnimName]) return;
+            if (mob.userData.currentAnim === newAnimName) return;
+            const prevAction = mob.userData.actions[mob.userData.currentAnim];
+            const newAction = mob.userData.actions[newAnimName];
+            if (prevAction) prevAction.fadeOut(duration);
+            newAction.reset();
+            newAction.fadeIn(duration);
+            newAction.play();
+            mob.userData.currentAnim = newAnimName;
+        }
     function createVoxelHero() {
         const hero = new THREE.Group();
 
@@ -574,25 +632,41 @@ function createNecromancerMob() {
 // 5. The Golem (Босс)
 function createGolemBoss() {
     const g = new THREE.Group();
-    const head = makeSkull(M_EYE_BLUE, 1.6);
-    head.position.y = 2.4;
-    g.add(head);
+    g.userData = { ...MOB_TYPES.golem, archetype: 'golem', attackCooldown: 0, speed: 5.5 };
+    
+   // Хитбокс увеличен под новые размеры
+    const hitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(3.0, 5.0, 3.0),
+        new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hitbox.position.y = 2.5;
+    hitbox.userData.rootMob = g; 
+    g.add(hitbox);
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.3, 0.9), M_GOLEM_STONE);
-    torso.position.y = 1.5;
-    g.add(torso);
+    if (bossGltf) {
+        const model = THREE.SkeletonUtils.clone(bossGltf.scene);
+        // Модель увеличена с 1.4 до 3.5 (если будет мелковат, ставь 4.5)
+        model.scale.set(3.5, 3.5, 3.5); 
+        g.add(model);
 
-    const mace = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.3, 0.4), M_GOLEM_STONE);
-    mace.position.set(0.9, 1.4, 0.3);
-    g.add(mace);
-
-    g.userData = { ...MOB_TYPES.golem, archetype: 'golem', attackCooldown: 0 };
-    // Мощные каменные ноги Голема
-const gLegL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.45), M_GOLEM_STONE);
-gLegL.position.set(-0.45, 0.45, 0);
-const gLegR = gLegL.clone();
-gLegR.position.x = 0.45;
-g.add(gLegL, gLegR);
+        const mixer = new THREE.AnimationMixer(model);
+        const actions = {};
+        
+        if (bossGltf.animations.length >= 4) {
+            actions.run = mixer.clipAction(bossGltf.animations[0]);   
+            actions.punch = mixer.clipAction(bossGltf.animations[1]); 
+            actions.kick = mixer.clipAction(bossGltf.animations[2]);  
+            actions.death = mixer.clipAction(bossGltf.animations[3]); 
+            
+            actions.death.clampWhenFinished = true;
+            actions.death.loop = THREE.LoopOnce;
+            
+            actions.run.play();
+            g.userData.currentAnim = 'run';
+        }
+        g.userData.mixer = mixer;
+        g.userData.actions = actions;
+    }
     return g;
 }
 
@@ -601,16 +675,16 @@ g.add(gLegL, gLegR);
 // ==========================================
 let currentWave = 1;
 const WAVE_CONFIG = [
-    { minion: 8,  necromancer: 0, rogue: 0, warrior: 0, golem: 0 },
-    { minion: 10, necromancer: 2, rogue: 0, warrior: 0, golem: 0 },
-    { minion: 8,  necromancer: 2, rogue: 2, warrior: 0, golem: 0 },
-    { minion: 6,  necromancer: 0, rogue: 2, warrior: 2, golem: 0 },
-    { minion: 6,  necromancer: 3, rogue: 2, warrior: 0, golem: 1 },
-    { minion: 12, necromancer: 4, rogue: 0, warrior: 1, golem: 0 },
-    { minion: 6,  necromancer: 4, rogue: 4, warrior: 2, golem: 0 },
-    { minion: 8,  necromancer: 6, rogue: 3, warrior: 3, golem: 0 },
-    { minion: 6,  necromancer: 4, rogue: 4, warrior: 4, golem: 1 },
-    { minion: 8,  necromancer: 6, rogue: 5, warrior: 4, golem: 2 }
+    { minion: 14, necromancer: 0, rogue: 0, warrior: 0, golem: 0 },
+    { minion: 18, necromancer: 3, rogue: 0, warrior: 0, golem: 0 },
+    { minion: 15, necromancer: 4, rogue: 3, warrior: 0, golem: 0 },
+    { minion: 12, necromancer: 0, rogue: 4, warrior: 3, golem: 0 },
+    { minion: 12, necromancer: 5, rogue: 3, warrior: 0, golem: 1 },
+    { minion: 20, necromancer: 6, rogue: 0, warrior: 2, golem: 0 },
+    { minion: 12, necromancer: 6, rogue: 6, warrior: 4, golem: 0 },
+    { minion: 15, necromancer: 8, rogue: 5, warrior: 5, golem: 0 },
+    { minion: 12, necromancer: 6, rogue: 6, warrior: 6, golem: 1 },
+    { minion: 18, necromancer: 9, rogue: 8, warrior: 6, golem: 2 }
 ];
 
 let waveInProgress = false;
@@ -660,10 +734,13 @@ function spawnWave(waveNum) {
     spawnPack(cfg.necromancer, createNecromancerMob);
     spawnPack(cfg.golem, createGolemBoss);
 
-    const scoreEl = document.getElementById('player-score');
+   const scoreEl = document.getElementById('player-score');
     if (scoreEl) {
         scoreEl.innerText = `ВОЛНА ${waveNum} | ВРАГОВ: ${enemies.length}`;
     }
+
+    // Воспроизводим твою фразу старта волны
+    if (typeof speakWaveStart === 'function') speakWaveStart();
 
     waveInProgress = true;
 }
@@ -773,7 +850,8 @@ walletBtn.innerText = `${shortAddress} (... ETH)`;
             walletBtn.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.35)';
         }
 // === ПОДКЛЮЧЕНИЕ К СЕРВЕРУ И СМАРТ-КОНТРАКТУ ===
-const socket = io("http://localhost:3000");
+// Пустые скобки заставят Socket.io автоматически подключиться к домену, на котором открыта игра
+const socket = io("https://94pttl-8080.csb.app/");
 const ESCROW_CONTRACT_ADDRESS = "0xCf69528544e1e4aFC42Bc0bdd56e292854EFB7f2";
 const ESCROW_ABI = [
     "function joinDuel(bytes32 matchId) external payable"
@@ -938,8 +1016,14 @@ socket.on('profile_data', (profile) => {
         // Запуск проверки сохраненной сессии
         checkWalletConnectionOnLoad();
         // ===============================================
+       // ===============================================
         document.getElementById('btn-settings').addEventListener('click', () => { settingsModal.style.display = 'flex'; });
         document.getElementById('btn-close-settings').addEventListener('click', () => { settingsModal.style.display = 'none'; });
+
+        // ЛОГИКА ОКНА GUIDE
+        const guideModal = document.getElementById('guide-modal');
+        document.getElementById('btn-guide').addEventListener('click', () => { guideModal.style.display = 'flex'; });
+        document.getElementById('btn-close-guide').addEventListener('click', () => { guideModal.style.display = 'none'; });
 
        // === БЕСПЛАТНЫЙ ВХОД В ТРЕНИРОВКУ И СМЕНА МУЗЫКИ ===
         const btnTrain = document.getElementById('btn-train');
@@ -1044,6 +1128,25 @@ const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x222630, 0.012);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // === НАПРАВЛЕННЫЙ ФОНАРИК НА КАМЕРУ ===
+        const flashlight = new THREE.SpotLight(0xffeedd, 3.5); // Мощность 3.5, теплый белый свет
+        flashlight.position.set(0.3, -0.2, 0.2); // Смещен чуть вправо и вниз (как будто висит на плече/стволе)
+        flashlight.target.position.set(0, 0, -1); // Всегда светит прямо по направлению взгляда
+        flashlight.angle = Math.PI / 7; // Узкий луч для криповой атмосферы (около 25 градусов)
+        flashlight.penumbra = 0.6; // Мягкие, размытые края луча
+        flashlight.distance = 35; // Дальность луча (не освещает всю карту)
+        flashlight.decay = 1.5; // Реалистичное затухание света
+        
+        camera.add(flashlight);
+        camera.add(flashlight.target);
+        
+        // === ВСПЫШКА ВЫСТРЕЛА (MUZZLE FLASH) ===
+        const muzzleFlashLight = new THREE.PointLight(0xff6600, 0, 18, 1.5);
+        muzzleFlashLight.position.set(0.6, -0.4, 0.8); // Точка прямо у ствола оружия
+        camera.add(muzzleFlashLight);
+        
+        scene.add(camera); // Обязательно добавляем камеру в сцену, иначе свет не привяжется
+        // =====================================
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
@@ -1641,13 +1744,19 @@ createFourBarricades(fireX, fireZ);
             return 'minion';
         }
 
-        function upgradeMobToCinematic(mob) {
+       function upgradeMobToCinematic(mob) {
             if (!mob || mob.userData.isCinematicUpgraded) return;
             mob.userData.isCinematicUpgraded = true;
 
             let archetype = mob.userData?.archetype || 'minion';
             if (mob === window.lastSpawnedGolem || (mob.scale && mob.scale.x > 1.4)) {
                 archetype = 'golem';
+            }
+
+            // === ИСПРАВЛЕНИЕ: СПАСАЕМ GLTF МОДЕЛЬ БОССА ОТ КУБИКОВ ===
+            if (archetype === 'golem') {
+                mob.userData.skelParts = { archetype: 'golem', isGolem: true };
+                return; // Прерываем функцию, чтобы не делать его невидимым!
             }
 
             // Индивидуальные хитбоксы и масштабы под каждый из 5 классов
@@ -1722,11 +1831,35 @@ createFourBarricades(fireX, fireZ);
             jaw.position.set(0, 0.05, 0.02);
             headGroup.add(jaw);
 
-            [-0.1, 0.1].forEach(xOff => {
+           [-0.1, 0.1].forEach(xOff => {
                 const e1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.05), eyeMat);
                 e1.position.set(xOff, 0.24, 0.21);
                 headGroup.add(e1);
             });
+
+            // === РАНДОМНАЯ БРОНЯ ДЛЯ ОБЫЧНЫХ МИНЬОНОВ ===
+            if (archetype === 'minion') {
+                const randArmor = Math.random();
+                if (randArmor > 0.4) {
+                    // Ржавый железный шлем
+                    const ironHat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.46), skelMats.rustMetal);
+                    ironHat.position.set(0, 0.46, 0);
+                    headGroup.add(ironHat);
+                    
+                    if (randArmor > 0.65) {
+                        // Асимметричный ржавый наплечник
+                        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.28), skelMats.rustMetal);
+                        pad.position.set(0.25, 0.78, 0);
+                        torso.add(pad);
+                    }
+                    if (randArmor > 0.8) {
+                        // Стальная челюсть / маска на лицо
+                        const jawArmor = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.35), skelMats.ironArmor);
+                        jawArmor.position.set(0, 0.05, 0.03);
+                        headGroup.add(jawArmor);
+                    }
+                }
+            }
 
           // === 1. ВИЗУАЛ ДЛЯ ДЕМОНА (БОСС GOLEM) ===
             if (isGolem) {
@@ -1934,37 +2067,62 @@ createFourBarricades(fireX, fireZ);
                         maceHandle.add(maceHead);
 
                         elbow.add(maceHandle);
-                    } else {
-                        // === СЛУЧАЙНЫЙ АРСЕНАЛ МИНЬОНА (3 ТИПА ОРУЖИЯ) ===
+                   
+
+                       } else {
+                        // === УЛУЧШЕННЫЙ БРУТАЛЬНЫЙ АРСЕНАЛ МИНЬОНА (3 ТИПА ОРУЖИЯ) ===
                         const weaponType = Math.floor(Math.random() * 3);
                         const minionWeapon = new THREE.Group();
-
+                        
+                        // Делаем рукояти толще, лезвия шире и добавляем ржавчину/металл
                         if (weaponType === 0) {
-                            // 1. Стальной меч с гардой
-                            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.8), skelMats.steel);
-                            blade.position.set(0, -0.32, 0.48);
-                            const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.06), skelMats.ironArmor);
+                            // 1. Тяжелый двуручный палаш (Broadsword)
+                            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.95), skelMats.steel);
+                            blade.position.set(0, -0.32, 0.55);
+                            // Кровосток/Центральная линия
+                            const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.04, 0.6), skelMats.rustMetal);
+                            fuller.position.set(0, -0.32, 0.5);
+                            const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, 0.08), skelMats.ironArmor);
                             crossguard.position.set(0, -0.32, 0.12);
-                            const pommel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.08), skelMats.darkBone);
-                            pommel.position.set(0, -0.32, -0.02);
-                            minionWeapon.add(blade, crossguard, pommel);
+                            const pommel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.12), skelMats.rustMetal);
+                            pommel.position.set(0, -0.32, -0.05);
+                            minionWeapon.add(blade, fuller, crossguard, pommel);
                         } else if (weaponType === 1) {
-                            // 2. Одноручный боевой топорик
-                            const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.75), skelMats.wood);
-                            shaft.position.set(0, -0.3, 0.35);
-                            const axeHead = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.22), skelMats.ironArmor);
-                            axeHead.position.set(0, -0.18, 0.62);
-                            const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 4), skelMats.steel);
-                            spike.position.set(0, -0.3, 0.78);
+                            // 2. Двойной варварский топор
+                            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 6), skelMats.wood);
+                            shaft.rotation.x = Math.PI / 2;
+                            shaft.position.set(0, -0.32, 0.4);
+                            
+                            const axeHeadGroup = new THREE.Group();
+                            axeHeadGroup.position.set(0, -0.32, 0.75);
+                            // Левое лезвие
+                            const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.35, 0.25), skelMats.rustMetal);
+                            blade1.position.set(0, 0.12, 0);
+                            blade1.rotation.x = -0.3;
+                            // Правое лезвие
+                            const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.35, 0.25), skelMats.rustMetal);
+                            blade2.position.set(0, -0.12, 0);
+                            blade2.rotation.x = 0.3;
+                            // Шип на конце
+                            const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), skelMats.steel);
+                            spike.position.set(0, 0, 0.2);
                             spike.rotation.x = Math.PI / 2;
-                            minionWeapon.add(shaft, axeHead, spike);
+                            
+                            axeHeadGroup.add(blade1, blade2, spike);
+                            minionWeapon.add(shaft, axeHeadGroup);
                         } else {
-                            // 3. Зазубренный тесак мясника
-                            const cleaver = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.65), skelMats.steel);
-                            cleaver.position.set(0, -0.28, 0.42);
-                            const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.2), skelMats.darkBone);
+                            // 3. Огромный ржавый тесак (Cleaver)
+                            const cleaver = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.7), skelMats.rustMetal);
+                            cleaver.position.set(0, -0.28, 0.45);
+                            // Заточка лезвия (блестящий край)
+                            const edge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.7), skelMats.steel);
+                            edge.position.set(0, -0.42, 0.45);
+                            
+                            const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.25, 6), skelMats.darkBone);
+                            hilt.rotation.x = Math.PI / 2;
                             hilt.position.set(0, -0.28, 0.05);
-                            minionWeapon.add(cleaver, hilt);
+                            
+                            minionWeapon.add(cleaver, edge, hilt);
                         }
 
                         elbow.add(minionWeapon);
@@ -1984,12 +2142,13 @@ createFourBarricades(fireX, fireZ);
             const leftArm = buildArm(false);
             const rightArm = buildArm(true);
 
-            function buildLeg(xPos) {
+          function buildLeg(xPos) {
                 const hip = new THREE.Group();
                 hip.position.set(xPos, 0.92, 0);
 
                 const femur = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.46, 0.15), subBone);
                 femur.position.y = -0.22;
+                femur.userData.isLeg = true; // ТОЧНЫЙ ХИТБОКС БЕДРА
                 hip.add(femur);
 
                 const knee = new THREE.Group();
@@ -1998,13 +2157,14 @@ createFourBarricades(fireX, fireZ);
 
                 const tibia = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.46, 0.12), mainBone);
                 tibia.position.y = -0.22;
+                tibia.userData.isLeg = true; // ТОЧНЫЙ ХИТБОКС ГОЛЕНИ
                 knee.add(tibia);
 
                 rig.add(hip);
                 return { hip, knee };
             }
 
-            const leftLeg = buildLeg(-0.18);
+           const leftLeg = buildLeg(-0.18);
             const rightLeg = buildLeg(0.18);
 
             mob.userData.skelParts = {
@@ -2012,9 +2172,9 @@ createFourBarricades(fireX, fireZ);
                 leftArm, rightArm, leftLeg, rightLeg,
                 archetype, isGolem,
                 phase: Math.random() * Math.PI * 2,
-                speed: isGolem ? 5.5 : (archetype === 'scythe' ? 8.5 : 10.0)
+                // Берем их родную базовую скорость и замедляем еще на 25%, чтобы они шли как настоящая нежить
+                speed: (mob.userData.speed || 4.0) * 0.75 
             };
-            
         // Привязываем каждую кость визуального скелета к общему хитбоксу моба
             rig.traverse(child => {
                 if (child.isMesh) {
@@ -2093,7 +2253,7 @@ createFourBarricades(fireX, fireZ);
         }
 
         // Починка ближайшей баррикады с помощью дров (Клавиша E)
-       function tryRepairNearestBarricade() {
+      function tryRepairNearestBarricade() {
             if (typeof barricades === 'undefined' || barricades.length === 0) return;
 
             let pPos = playerGroup ? playerGroup.position : camera.position;
@@ -2112,15 +2272,15 @@ createFourBarricades(fireX, fireZ);
             });
 
             if (!nearestBar) {
-                showKillBanner("GET CLOSER TO THE BARRICADE!", false);
+                showKillBanner("MOVE CLOSER!", false);
                 return;
             }
             if (woodInventory <= 0) {
-                showKillBanner("NO WOOD FOR REPAIR! (SEARCH IN THE FOREST)", false);
+                showKillBanner("NO WOOD! (SEARCH FOREST)", false);
                 return;
             }
             if (nearestBar.userData.hp >= nearestBar.userData.maxHp) {
-                showKillBanner("BARRICADE IS FULLY REPAIRED!", false);
+                showKillBanner("BARRICADE FULL!", false);
                 return;
             }
 
@@ -2130,9 +2290,9 @@ createFourBarricades(fireX, fireZ);
             nearestBar.visible = true; 
             nearestBar.position.set(0, 0, 0);
 
-            // Вычисляем процент и ПОСЛЕ этого выводим сообщение
+            // Вычисляем процент и выводим короткое сообщение
             const percent = Math.round((nearestBar.userData.hp / nearestBar.userData.maxHp) * 100);
-            showKillBanner(`🔨 BARRICADE REPAIRED! (${percent}%)`, false);
+            showKillBanner(`🔨 REPAIRED: ${percent}%`, false);
         }
 
         function updateAllMobAnimations(time) {
@@ -2143,18 +2303,106 @@ createFourBarricades(fireX, fireZ);
 
             if (typeof enemies === 'undefined' || !Array.isArray(enemies)) return;
 
-            enemies.forEach(mob => {
+           enemies.forEach(mob => {
                 if (!mob) return;
                 if (!mob.userData.isCinematicUpgraded) upgradeMobToCinematic(mob);
 
                 const p = mob.userData.skelParts;
                 if (!p) return;
+
+              // === НОВЫЙ ИНТЕЛЛЕКТ БОССА (С РАЗНЫМИ АТАКАМИ И СБЛИЖЕНИЕМ) ===
+                if (p.isGolem || mob.userData.archetype === 'golem') {
+                    if (mob.userData.mixer) mob.userData.mixer.update(0.016);
+                    if (mob.userData.hp <= 0) return;
+
+                    let dist = 999;
+                    if (pPos) dist = Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z);
+                    const isBlocked = checkMobBarricadeCollision(mob, 0.016);
+
+                    // Охлаждение атаки
+                    mob.userData.attackCooldown = (mob.userData.attackCooldown || 0) - 0.016;
+
+                    // Если анимация удара еще идет — блокируем обычный бег, чтобы не скользил
+                    if (mob.userData.attackCooldown > 0) return;
+
+                    // 1. ИГРОК ДАЛЕКО -> ПРОСТО БЕЖИМ
+                    if (dist > 6.0 && !isBlocked) {
+                        crossFadeAnim(mob, 'run');
+                        const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
+                        mob.position.addScaledVector(dir, (mob.userData.speed || 5.5) * 0.016);
+                    } 
+                    // 2. СРЕДНЯЯ ДИСТАНЦИЯ -> ПРЫЖОК С УДАРОМ НОГОЙ (Сближение)
+                    else if (dist >= 2.5 && dist <= 6.0 && !isBlocked) {
+                        mob.userData.attackCooldown = 2.5; // Время всей анимации прыжка
+                        crossFadeAnim(mob, 'kick');
+                        
+                        // Делаем физический рывок вперед прямо в воздухе через 250мс после начала анимации
+                        setTimeout(() => {
+                            if (mob && mob.userData.hp > 0 && pPos) {
+                                const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
+                                mob.position.addScaledVector(dir, 2.5); // Резкое сближение
+                            }
+                        }, 250); 
+
+                        // Наносим урон, когда нога прилетает в игрока (700мс)
+                        setTimeout(() => {
+                            if (mob && mob.userData.hp > 0) {
+                                let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
+                                if (hitDist < 4.0) damagePlayer(55); // Мощный урон
+                            }
+                        }, 700);
+
+                    } 
+                    // 3. ИГРОК ВПЛОТНУЮ ИЛИ УПЕРСЯ В ЗАБОР -> БЬЕТ РУКОЙ
+                    else {
+                        mob.userData.attackCooldown = 1.8;
+                        crossFadeAnim(mob, 'punch');
+                        
+                        // Наносим урон, когда кулак бьет по игроку (500мс)
+                        setTimeout(() => {
+                            if (mob && mob.userData.hp > 0) {
+                                let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
+                                if (hitDist < 3.8 || isBlocked) damagePlayer(35);
+                            }
+                        }, 500);
+                    }
+                    
+                    return; // ВАЖНО: Прерываем функцию, чтобы босс не обрабатывался как обычный скелет!
+                }
+
+              // === СТАВИМ ЭТОТ БЛОК СЮДА ===
+                // Если скелет лишился ног и стал краулером (ползает на руках)
+                if (mob.userData.isCrawler) {
+                    // Опускаем весь скелет так, чтобы туловище легло на землю
+                    p.rig.position.y = -0.75; 
+                    
+                    // Сильнее наклоняем корпус вперед (почти параллельно полу)
+                    p.torso.rotation.x = 1.4; 
+                    
+                    // Задираем голову вверх, чтобы ползущий скелет смотрел на игрока
+                    p.headGroup.rotation.x = -1.1; 
+                    
+                    // Анимация перебирания руками по земле
+                    const crawlSwing = Math.sin(time * 16 + p.phase);
+                    p.leftArm.shoulder.rotation.x = -1.2 + crawlSwing * 0.8;
+                    p.rightArm.shoulder.rotation.x = -1.2 - crawlSwing * 0.8; 
+                    
+                    // Легкое покачивание туловища в такт ползанию
+                    p.torso.rotation.y = Math.cos(time * 8 + p.phase) * 0.15;
+                    p.torso.rotation.z = 0;
+
+                    return; // Пропускаем стандартную ходьбу ногами для этого моба
+                }
+                // ============================
+
                 // Проверка препятствия и атаки баррикады
                 const isBlockedByBarricade = checkMobBarricadeCollision(mob, 0.016);
 
                 const t = time * p.speed + p.phase;
                 const swing = Math.sin(t);
                 const bounce = Math.abs(Math.cos(t));
+                
+                // ... (дальше идут обычные расчеты ног и рук для живых скелетов)
 
                 p.leftLeg.hip.rotation.x = swing * 0.8;
                 p.leftLeg.knee.rotation.x = Math.max(0, -swing * 0.85);
@@ -2231,57 +2479,60 @@ createFourBarricades(fireX, fireZ);
                             p.rightArm.elbow.rotation.x = -0.5;
                         }
                     }
-           // --- 3. АТАКИ ДЕМОНА-ГОЛЕМА (БОСС) ---
-                    else if (p.isGolem) {
-                        // ИСПРАВЛЕНИЕ: здесь нет переменной delta, используем фиксированный шаг времени 0.016 (16 мс)
-                        enemy.userData.throwTimer = (enemy.userData.throwTimer || 0) - 0.016;
+      // --- 3. АТАКИ ДЕМОНА-ГОЛЕМА (БОСС) ---
+                    else if (p.isGolem || mob.userData.archetype === 'golem') {
+                        if (mob.userData.mixer) mob.userData.mixer.update(delta);
+                        if (mob.userData.hp <= 0) return;
 
-                        if (dist > 7.0) {
-                            // Игрок далеко -> Кидаем валун
-                            if (enemy.userData.throwTimer <= 0) {
-                                enemy.userData.throwTimer = 3.5 + Math.random() * 2.0; // Кулдаун броска
-                                
-                                // Спавним огромный пылающий камень
-                                const rock = new THREE.Mesh(
-                                    new THREE.DodecahedronGeometry(0.65, 1),
-                                    new THREE.MeshBasicMaterial({ color: 0xff3300, fog: false })
-                                );
-                                // Поднимаем точку спавна, чтобы камень вылетал из руки
-                                rock.position.set(enemy.position.x, enemy.position.y + 4.0, enemy.position.z);
+                        let dist = 999;
+                        if (pPos) dist = Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z);
+                        const isBlocked = checkMobBarricadeCollision(mob, delta);
 
-                                // Направляем камень в игрока + делаем дугу (вверх)
-                                const targetPos = playerGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
-                                const dir = new THREE.Vector3().subVectors(targetPos, rock.position).normalize();
-                                dir.y += 0.35; // Кидаем навесом
-                                
-                                scene.add(rock);
-                                enemyBullets.push({
-                                    mesh: rock, dir: dir, life: 5.0, damage: 45, isRock: true
-                                });
-                            }
-                            
-                            // Анимация замаха броска
-                            const throwAnim = Math.sin(globalAnimTime * 3);
-                            p.rightArm.shoulder.rotation.x = -2.8 + throwAnim * 0.5; // Рука отведена далеко назад
-                            p.rightArm.elbow.rotation.x = -0.2;
-                            p.leftArm.shoulder.rotation.x = -1.0;
-                        } else {
-                            // Ближний бой (если игрок подошел вплотную)
-                            if (attackCycle === 0) {
-                                const slam = Math.sin(atkTime * 0.7);
-                                p.rightArm.shoulder.rotation.x = -2.4 + slam * 1.5;
-                                p.rightArm.elbow.rotation.x = -0.9;
-                                p.leftArm.shoulder.rotation.x = -2.2 + slam * 1.4;
-                                p.leftArm.elbow.rotation.x = -0.9;
-                            } else {
-                                const sweep = Math.sin(atkTime * 0.8);
-                                p.rightArm.shoulder.rotation.x = -1.1;
-                                p.rightArm.shoulder.rotation.y = sweep * 1.4;
-                                p.rightArm.elbow.rotation.x = -0.7;
-                                p.leftArm.shoulder.rotation.x = -0.6;
-                            }
+                        mob.userData.attackCooldown = (mob.userData.attackCooldown || 0) - delta;
+
+                        // Плавный физический рывок к игроку во время проигрывания анимации удара ногой
+                        if (mob.userData.currentAnim === 'kick' && mob.userData.attackCooldown > 0.5) {
+                            const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
+                            mob.position.addScaledVector(dir, 8.0 * delta); // Скорость рывка
                         }
+
+                        // Пока идет откат атаки — блокируем смену анимаций, чтобы босс не скользил в позе стоя
+                        if (mob.userData.attackCooldown > 0) return;
+
+                        // 1. ИГРОК ДАЛЕКО -> БЕЖИМ
+                        if (dist > 5.5 && !isBlocked) {
+                            crossFadeAnim(mob, 'run');
+                            const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
+                            mob.position.addScaledVector(dir, (mob.userData.speed || 5.5) * delta);
+                        } 
+                        // 2. СРЕДНЯЯ ДИСТАНЦИЯ -> УДАР НОГОЙ С РЫВКОМ
+                        else if (dist >= 2.5 && dist <= 5.5 && !isBlocked) {
+                            mob.userData.attackCooldown = 2.0; 
+                            crossFadeAnim(mob, 'kick');
+                            
+                            // Урон наносится в момент приземления ноги
+                            setTimeout(() => {
+                                if (mob && mob.userData.hp > 0) {
+                                    let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
+                                    if (hitDist < 4.2) damagePlayer(55); // Мощный урон
+                                }
+                            }, 700); 
+                        } 
+                        // 3. ИГРОК ВПЛОТНУЮ ИЛИ УПЕРСЯ В ЗАБОР -> БЬЕТ РУКОЙ
+                        else {
+                            mob.userData.attackCooldown = 1.8;
+                            crossFadeAnim(mob, 'punch');
+                            
+                            setTimeout(() => {
+                                if (mob && mob.userData.hp > 0) {
+                                    let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
+                                    if (hitDist < 3.8 || isBlocked) damagePlayer(35);
+                                }
+                            }, 500);
+                        }
+                        return; // Прерываем, чтобы на босса не влияла логика обычных скелетов
                     }
+                    // --- 4. АТАКИ МИНЬОНА (ОБЫЧНЫЙ СКЕЛЕТ: 4 РАЗНЫХ УДАРА) ---
                    // --- 4. АТАКИ МИНЬОНА (ОБЫЧНЫЙ СКЕЛЕТ: 4 РАЗНЫХ УДАРА) ---
                     else {
                         const minionCycle = Math.floor((time * 0.5 + p.phase) % 4);
@@ -2420,34 +2671,38 @@ createFourBarricades(fireX, fireZ);
         let score = 0;
         let waveCount = 1;
 
-     function showKillBanner(text, hitType) {
+    function showKillBanner(text, hitType) {
             const feed = document.getElementById('kill-feed');
             const item = document.createElement('div');
             item.innerHTML = text;
-            item.style.fontFamily = "'Pirata One', cursive";
-            item.style.fontSize = hitType !== 'body' ? "38px" : "30px";
+            
+            // Заменяем витиеватый шрифт на строгий моноширинный
+            item.style.fontFamily = "'Share Tech Mono', monospace";
+            item.style.fontWeight = "bold";
+            // Делаем текст компактнее
+            item.style.fontSize = (hitType !== 'body' && hitType !== false) ? "26px" : "18px";
             
             if (hitType === 'core') {
-                item.style.color = "#ffd700"; // Золотой/Желтый для сердца
-                item.style.textShadow = "0 0 16px #ffaa00, 0 0 30px #000";
+                item.style.color = "#ffd700"; 
+                item.style.textShadow = "0 0 10px #ffaa00, 0 0 20px #000";
             } else if (hitType === 'head') {
-                item.style.color = "#ff2222"; // Красный для головы
-                item.style.textShadow = "0 0 16px #ff0000, 0 0 30px #000";
+                item.style.color = "#ff2222"; 
+                item.style.textShadow = "0 0 10px #ff0000, 0 0 20px #000";
             } else {
-                item.style.color = "#999999"; // Серый для обычного убийства
-                item.style.textShadow = "0 0 10px rgba(0,0,0,0.8), 0 0 20px #000";
+                item.style.color = "#e5e9f0"; // Приятный белый цвет вместо тусклого серого
+                item.style.textShadow = "0 0 8px rgba(255,255,255,0.4), 0 0 15px #000";
             }
             
-            item.style.letterSpacing = "2px";
+            item.style.letterSpacing = "1px";
             item.style.opacity = "1";
-            item.style.transform = "scale(1.2)";
-            item.style.transition = "all 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28)";
+            item.style.transform = "scale(1.1)";
+            item.style.transition = "all 0.4s ease-out";
 
             feed.appendChild(item);
             setTimeout(() => { item.style.transform = "scale(1)"; }, 30);
             setTimeout(() => {
                 item.style.opacity = "0";
-                item.style.transform = "translateY(-20px) scale(0.9)";
+                item.style.transform = "translateY(-15px) scale(0.95)";
             }, 1000);
             setTimeout(() => { if (item.parentNode) feed.removeChild(item); }, 1500);
         }
@@ -2550,6 +2805,21 @@ function spawnBoneExplosion(mob) {
             isGrounded: false
         });
     });
+}
+function spawnLegsExplosion(mob) {
+    if (!mob || !mob.userData.skelParts) return;
+    playBoneCrunchSound();
+
+    const p = mob.userData.skelParts;
+    if (p.leftLeg && p.leftLeg.hip) p.leftLeg.hip.visible = false;
+    if (p.rightLeg && p.rightLeg.hip) p.rightLeg.hip.visible = false;
+
+    // Сразу опускаем скелет на землю, чтобы он не висел в воздухе
+    if (typeof getGroundHeight === 'function') {
+        mob.position.y = getGroundHeight(mob.position);
+    }
+
+    showKillBanner("🦵 LEG SHOT!", 'body');
 }
 // === ВОКСЕЛЬНЫЙ ГЕРОЙ (ВИД СО СПИНЫ, СМОТРИТ ВПЕРЕД) ===
     function createVoxelHero() {
@@ -2972,17 +3242,8 @@ function spawnBoneExplosion(mob) {
 
             formant1.start(t + 0.02);
             formant2.start(t + 0.02);
-            formant1.stop(t + 0.28);
-            formant2.stop(t + 0.28);
-            // Озвучка фраз героя при получении урона
-        let lastVoiceTime = 0;
-        const hurtPhrases = [
-            "Ouch!",
-            "Ouch, that hurts!",
-            "Damn, that hurts!",
-            "Ah, that hurts!",
-            "Ouch, stop it!"
-        ];
+           } // <--- ВОТ ЭТА СКОБКА ТЕПЕРЬ ПРАВИЛЬНО ЗАКРЫВАЕТ playPlayerHurtSound
+
         // Звук спуска тетивы лука стрелка
         function playBowReleaseSound() {
             if (!audioCtx) return;
@@ -3004,25 +3265,40 @@ function spawnBoneExplosion(mob) {
             osc.stop(t + 0.13);
         }
 
-        // Хриплый процедурный рык скелета с затуханием по дистанции
+        // Хриплый процедурный рык скелета с настоящим пространственным 3D-аудио
+        // Хриплый процедурный рык скелета с настоящим пространственным 3D-аудио
         function playSkeletonGrowlSound(mobPos) {
             if (!audioCtx || !gameActive) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
 
             let pPos = playerGroup ? playerGroup.position : camera.position;
             const dist = Math.hypot(mobPos.x - pPos.x, mobPos.z - pPos.z);
-            if (dist > 30) return; // Слишком далеко — не шумим
+            if (dist > 30) return;
 
             const t = audioCtx.currentTime;
             const dur = 0.5 + Math.random() * 0.35;
-            const vol = Math.max(0.04, 1.0 - (dist / 30)) * soundVolume * 0.75;
 
             const masterG = audioCtx.createGain();
             masterG.gain.setValueAtTime(0.01, t);
-            masterG.gain.linearRampToValueAtTime(vol, t + 0.08);
+            masterG.gain.linearRampToValueAtTime(soundVolume * 0.8, t + 0.08);
             masterG.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
-            // Шумовая хрипота
+            // === 3D ЗВУК (ИСПРАВЛЕНО ДЛЯ MAC) ===
+            const panner = audioCtx.createPanner();
+            panner.panningModel = 'HRTF';
+            panner.distanceModel = 'linear';
+            panner.refDistance = 5.0;
+            panner.maxDistance = 40.0;
+            panner.rolloffFactor = 1.0;
+
+            if (panner.positionX) {
+                panner.positionX.value = mobPos.x;
+                panner.positionY.value = mobPos.y;
+                panner.positionZ.value = mobPos.z;
+            } else if (panner.setPosition) {
+                panner.setPosition(mobPos.x, mobPos.y, mobPos.z);
+            }
+
             const bufSize = Math.floor(audioCtx.sampleRate * dur);
             const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
             const data = buf.getChannelData(0);
@@ -3032,7 +3308,6 @@ function spawnBoneExplosion(mob) {
             const noise = audioCtx.createBufferSource();
             noise.buffer = buf;
 
-            // Зловещий стон (низкая пила)
             const osc = audioCtx.createOscillator();
             osc.type = 'sawtooth';
             const baseF = 60 + Math.random() * 40;
@@ -3047,7 +3322,9 @@ function spawnBoneExplosion(mob) {
             noise.connect(filter);
             osc.connect(filter);
             filter.connect(masterG);
-            masterG.connect(audioCtx.destination);
+            
+            masterG.connect(panner);
+            panner.connect(audioCtx.destination);
 
             noise.start(t);
             osc.start(t);
@@ -3055,26 +3332,126 @@ function spawnBoneExplosion(mob) {
             osc.stop(t + dur);
         }
 
+      // === ЗАГРУЗКА ГОЛОСОВЫХ ФРАЗ И ЗВУКОВ СКЕЛЕТОВ ===
+        const hurtBuffers = [];
+        const waveStartBuffers = [];
+        const waveClearedBuffers = [];
+        
+        const hurtFiles = ['hurt_1.mp3', 'hurt_2.mp3', 'hurt_3.mp3'];
+        const waveStartFiles = ['wave_start.mp3'];
+        const waveClearedFiles = ['wave_cleared.mp3'];
+
+        const skelAttackBuffers = [];
+        const skelDeathBuffers = [];
+        const skelStepBuffers = [];
+
+        function loadVoicePack(filesArray, targetBufferArray) {
+            filesArray.forEach(file => {
+                fetch(file)
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
+                    .then(audioBuffer => { targetBufferArray.push(audioBuffer); })
+                    .catch(e => console.warn("Файл звука не найден:", file));
+            });
+        }
+
+        // Загружаем фразы героя
+        loadVoicePack(hurtFiles, hurtBuffers);
+        loadVoicePack(waveStartFiles, waveStartBuffers);
+        loadVoicePack(waveClearedFiles, waveClearedBuffers);
+
+        // Загружаем звуки скелетов
+        loadVoicePack(['skeleton_sward.mp3'], skelAttackBuffers);
+        loadVoicePack(['break1.mp3'], skelDeathBuffers);
+        loadVoicePack(['skeleton.mp3'], skelStepBuffers);
+
+        let lastHurtVoiceTime = 0;
+
+        // Универсальный 3D-плеер для MP3
+       // Универсальный 3D-плеер для MP3 (ИСПРАВЛЕНО ДЛЯ MAC И СЛЫШИМОСТИ)
+        function playSpatialMP3(bufferArray, pos, volMult = 1.0, maxDist = 30) {
+            if (!audioCtx || bufferArray.length === 0 || !gameActive) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            let pPos = playerGroup ? playerGroup.position : camera.position;
+            const dist = Math.hypot(pos.x - pPos.x, pos.z - pPos.z);
+            if (dist > maxDist) return;
+
+            const t = audioCtx.currentTime;
+            const randomBuffer = bufferArray[Math.floor(Math.random() * bufferArray.length)];
+            
+            const source = audioCtx.createBufferSource();
+            source.buffer = randomBuffer;
+            source.playbackRate.value = 0.85 + Math.random() * 0.3; 
+
+            const masterGain = audioCtx.createGain();
+            // Умножаем громкость на 2, чтобы пробить шум выстрелов
+            masterGain.gain.value = soundVolume * volMult * 2.0; 
+
+            const panner = audioCtx.createPanner();
+            panner.panningModel = 'HRTF';
+            
+            // ИСПРАВЛЕНИЕ 1: Линейное затухание (теперь звуки вдали слышно)
+            panner.distanceModel = 'linear'; 
+            panner.refDistance = 5.0; // До 5 метров звук 100% громкости
+            panner.maxDistance = maxDist;
+            panner.rolloffFactor = 1.0;
+            
+            // ИСПРАВЛЕНИЕ 2: Поддержка Safari и Mac
+            if (panner.positionX) {
+                panner.positionX.value = pos.x;
+                panner.positionY.value = pos.y;
+                panner.positionZ.value = pos.z;
+            } else if (panner.setPosition) {
+                panner.setPosition(pos.x, pos.y, pos.z);
+            }
+
+            source.connect(masterGain);
+            masterGain.connect(panner);
+            panner.connect(audioCtx.destination);
+            
+            source.start(t);
+        }
+
+        // Универсальная функция проигрывания голоса с эффектами
+        function playVoiceBuffer(bufferArray) {
+            if (!audioCtx || bufferArray.length === 0) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            const randomBuffer = bufferArray[Math.floor(Math.random() * bufferArray.length)];
+            const source = audioCtx.createBufferSource();
+            source.buffer = randomBuffer;
+
+            // Легкая рандомизация тональности
+            source.playbackRate.value = 0.9 + Math.random() * 0.2;
+
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.value = soundVolume * 2.0;
+
+            source.connect(masterGain);
+            masterGain.connect(audioCtx.destination);
+            source.start(t);
+        }
+
+        // 1. Озвучка при получении урона
         function speakPlayerHurt() {
-            if (typeof window.speechSynthesis === 'undefined') return;
-
             const now = performance.now() * 0.001;
-            // Кулдаун 0.9 сек, чтобы не перебивать фразы при быстрой череде ударов
-            if (now - lastVoiceTime < 0.9) return;
-            lastVoiceTime = now;
-
-            const phrase = hurtPhrases[Math.floor(Math.random() * hurtPhrases.length)];
-            const utterance = new SpeechSynthesisUtterance(phrase);
-
-            utterance.lang = 'en-US';
-            utterance.rate = 1.35; // Быстрый резкий возглас от боли
-            utterance.pitch = 1.1; // Тональность голоса
-            utterance.volume = Math.min(1.0, soundVolume * 1.2);
-
-            window.speechSynthesis.cancel(); // Сбрасываем старую речь, если играла
-            window.speechSynthesis.speak(utterance);
+            if (now - lastHurtVoiceTime < 1.5) return; 
+            lastHurtVoiceTime = now;
+            playVoiceBuffer(hurtBuffers);
         }
+
+        // 2. Озвучка при начале волны
+        function speakWaveStart() {
+            setTimeout(() => { playVoiceBuffer(waveStartBuffers); }, 1000);
         }
+
+        // 3. Озвучка при зачистке волны
+        function speakWaveCleared() {
+            playVoiceBuffer(waveClearedBuffers);
+        }
+        
        // Конфигурация 3 видов оружия:
         // 1: Снайперка (1 патрон, долгая перезарядка 2.8 сек)
         // 2: Автомат (30 патронов, перезарядка 1.8 сек)
@@ -3156,7 +3533,7 @@ function spawnBoneExplosion(mob) {
             if (e.key === '3') setWeapon(3);
             if (e.code === 'KeyR' && gameActive) reloadWeapon();
             
-            if (e.code === 'KeyE' && gameActive) {
+           if (e.code === 'KeyE' && gameActive) {
                 let pPos = playerGroup ? playerGroup.position : camera.position;
                 const distToFire = Math.hypot(pPos.x - fireX, pPos.z - fireZ);
                 if (distToFire < 4.5) {
@@ -3164,12 +3541,12 @@ function spawnBoneExplosion(mob) {
                         if (fireFuel < 95) {
                             woodInventory--;
                             fireFuel = Math.min(maxFuel, fireFuel + 40);
-                            showKillBanner("🔥 WOOD ADDED TO CAMPFIRE!", false);
+                            showKillBanner("🔥 FIRE FUELED!", false);
                         } else {
-                            showKillBanner("CAMPFIRE IS ALREADY AT MAX HEAT!", false);
+                            showKillBanner("🔥 MAX HEAT!", false);
                         }
                     } else {
-                        showKillBanner("NO WOOD! FIND IT IN THE FOREST", false);
+                        showKillBanner("NO WOOD! (SEARCH FOREST)", false);
                     }
                 } else {
                     tryRepairNearestBarricade();
@@ -3253,6 +3630,12 @@ function spawnBoneExplosion(mob) {
                     yaw += (Math.random() - 0.5) * 0.015;
                 }
             }
+            
+
+           // Включаем свет от выстрела
+            if (typeof muzzleFlashLight !== 'undefined') {
+                muzzleFlashLight.intensity = 6.0;
+            }
 
             const cameraDir = new THREE.Vector3();
             camera.getWorldDirection(cameraDir);
@@ -3296,8 +3679,23 @@ function spawnBoneExplosion(mob) {
                             }
                         }
                         
-                        // Никаких расчетов по высоте! Только строгие физические хитбоксы
+                      // Никаких расчетов по высоте! Только строгие физические хитбоксы
                         const isHeadshot = isHeadMesh && !isCore;
+
+                       // Проверяем, попали ли в ноги (если скелет еще полноценный)
+                        let isLegHit = false;
+                        for (let h = 0; h < Math.min(hits.length, 3); h++) {
+                            if (hits[h].distance - hits[0].distance > 0.6) break;
+                            let obj = hits[h].object;
+                            while (obj) {
+                                // Ищем точный маркер кости ноги вместо угадывания геометрии
+                                if (obj.userData.isLeg === true && !hitEnemy.userData.isCrawler) {
+                                    isLegHit = true;
+                                    break;
+                                }
+                                obj = obj.parent;
+                            }
+                        }
 
                         let hitType = 'body';
                         let finalDmg = currentGun.dmg;
@@ -3311,19 +3709,40 @@ function spawnBoneExplosion(mob) {
                             hitType = 'head';
                             finalDmg *= 2.0;
                             reward = 125;
-                        }
+                     } else if (isLegHit && !hitEnemy.userData.isCrawler && hitEnemy.userData.hp > 30 && hitEnemy.userData.role !== 'boss') {
+                            hitEnemy.userData.isCrawler = true;
+                            hitEnemy.userData.speed *= 0.4; // Замедляем ползуна
+                            hitType = 'legs';
+                            reward = 110;
 
-                        hitEnemy.userData.hp -= finalDmg;
+                            // Отрываем ноги визуально
+                            if (typeof spawnLegsExplosion === 'function') {
+                                spawnLegsExplosion(hitEnemy);
+                            }
+                        }
+hitEnemy.userData.hp -= finalDmg;
 
                         if (typeof createBloodSplatter === 'function') createBloodSplatter(hits[0].point);
 
-                        if (hitEnemy.userData.hp <= 0) {
-                            spawnBoneExplosion(hitEnemy);
-                            scene.remove(hitEnemy);
-                            const idx = enemies.indexOf(hitEnemy);
-                            if (idx !== -1) enemies.splice(idx, 1);
-                            
+                      if (hitEnemy.userData.hp <= 0) {
                             if (typeof addScore === 'function') addScore(reward, hitType);
+
+                            if (hitEnemy.userData.role === 'boss') {
+                                if (hitEnemy.userData.actions?.death) crossFadeAnim(hitEnemy, 'death', 0.1);
+                                setTimeout(() => {
+                                    scene.remove(hitEnemy);
+                                    const idx = enemies.indexOf(hitEnemy);
+                                    if (idx !== -1) enemies.splice(idx, 1);
+                                }, 3500); 
+                          } else {
+                                // Звук рассыпающихся костей
+                                playSpatialMP3(skelDeathBuffers, hitEnemy.position, 0.4, 20);
+                                
+                                spawnBoneExplosion(hitEnemy);
+                                scene.remove(hitEnemy);
+                                const idx = enemies.indexOf(hitEnemy);
+                                if (idx !== -1) enemies.splice(idx, 1);
+                            }
 
                             const scoreEl = document.getElementById('player-score');
                             if (scoreEl) scoreEl.innerText = `WAVE ${getDetectedWave()} | REMAINING: ${enemies.length}`;
@@ -3381,8 +3800,11 @@ function spawnBoneExplosion(mob) {
             return false;
         }
 
-       const clock = new THREE.Clock();
+     const clock = new THREE.Clock();
         let globalAnimTime = 0;
+        let headBobTimer = 0; // Добавлено для тряски камеры
+
+        // Переиспользуемые векторы
 
         // Переиспользуемые векторы (Rule 3 Vibe/Vibe: никакого мусора в памяти внутри animate!)
         const _upAxis = new THREE.Vector3(0, 1, 0);
@@ -3567,13 +3989,34 @@ function spawnBoneExplosion(mob) {
                             });
                         }
                     }
-                    // 2. БЛИЖНИЙ БОЙ: Minion, Necromancer, Warrior, Golem
+                  // 2. БЛИЖНИЙ БОЙ: Minion, Necromancer, Warrior, Golem
                     else {
-                        const hitDist = enemy.userData.role === 'boss' ? 2.8 : 1.75;
+                        // БОСС УПРАВЛЯЕТСЯ ОТДЕЛЬНО В ДРУГОМ МЕСТЕ! 
+                        // Отключаем его здесь, чтобы он не наносил урон просто от касания
+                        if (enemy.userData.role === 'boss' || enemy.userData.archetype === 'golem') continue;
+
+                        const hitDist = 1.75;
                         if (dist > hitDist) {
-                            // На последних 3.5 метрах милишники делают рывок (ускоряются на 25%), чтобы от них нельзя было просто уйти пешком!
+                        
+                           // --- ИИ ОКРУЖЕНИЯ (ПЛАВНЫЙ ОБХОД) ---
+                            let moveTarget = _toPlayer.clone();
+                            
+                            if (dist > 4.5 && enemy.userData.role !== 'boss') {
+                                // Уменьшили разброс с 1.8 до 0.45. Теперь они идут вперед и лишь СЛЕГКА забирают вбок
+                                const flankSpread = Math.sin(globalAnimTime * 0.3 + (enemy.userData.phase || 0)) * 0.45;
+                                moveTarget.addScaledVector(_perp, flankSpread);
+                                moveTarget.normalize(); 
+                            }
+
+                            // На последних 3.5 метрах мобы стягивают кольцо и делают рывок к тебе
                             const lungeBoost = (dist < 3.8 && enemy.userData.role !== 'boss') ? 1.25 : 1.0;
-                            enemy.position.addScaledVector(_toPlayer, enemy.userData.speed * lungeBoost * delta);
+                            enemy.position.addScaledVector(moveTarget, enemy.userData.speed * lungeBoost * delta);
+                            // Звук шагов скелета
+                            enemy.userData.stepTimer = (enemy.userData.stepTimer || 0.4) - delta;
+                            if (enemy.userData.stepTimer <= 0) {
+                                enemy.userData.stepTimer = 0.4 * (4.0 / enemy.userData.speed);
+                                playSpatialMP3(skelStepBuffers, enemy.position, 0.25, 15);
+                            }
 
                             // Если у моба есть зигзаг (например, быстрый Некромант) — добавляем боковое уклонение
                             if (enemy.userData.zigzagAmp > 0 && dist > 3.0) {
@@ -3588,6 +4031,7 @@ function spawnBoneExplosion(mob) {
                             enemy.position.addScaledVector(_sepVec, 0.5 * delta);
                             enemy.userData.attackCooldown = (enemy.userData.attackCooldown || 0) - delta;
                             if (enemy.userData.attackCooldown <= 0) {
+                                playSpatialMP3(skelAttackBuffers, enemy.position, 1.2, 25);
                                 damagePlayer(enemy.userData.damage);
                                 enemy.userData.attackCooldown = 0.9;
                             }
@@ -3602,14 +4046,51 @@ function spawnBoneExplosion(mob) {
                         enemy.position.y = getGroundHeight(enemy.position);
                     }
                 }
-    // === ПРОВЕРКА ЗАВЕРШЕНИЯ ВОЛНЫ (ПЕРЕХОД К СЛЕДУЮЩЕЙ) ===
-    if (gameActive && enemies.length === 0 && currentWave <= 10) {
-        currentWave++;
-        if (currentWave <= 10) {
-            spawnWave(currentWave);
+ // === ПРОВЕРКА ЗАВЕРШЕНИЯ ВОЛНЫ (ПЕРЕХОД К СЛЕДУЮЩЕЙ) ===
+    if (gameActive && waveInProgress && enemies.length === 0) {
+        waveInProgress = false; // Блокируем случайные повторные срабатывания
+        
+        if (currentWave < 10) {
+            // Показываем красивый баннер победы над волной
+            showKillBanner("⚔️ WAVE CLEARED! PREPARE YOUR DEFENSES!", false);
+            
+            // Воспроизводим фразу конца волны
+            if (typeof speakWaveCleared === 'function') speakWaveCleared();
+            
+            let prepTimer = 15; // 15 секунд на починку и сбор дров
+            const scoreEl = document.getElementById('player-score');
+            
+            // Запускаем обратный отсчет
+            const countdownInterval = setInterval(() => {
+                // Если игрок умер во время передышки, останавливаем таймер
+                if (!gameActive) {
+                    clearInterval(countdownInterval);
+                    return;
+                }
+                
+                if (scoreEl) {
+                    scoreEl.innerText = `NEXT WAVE IN: ${prepTimer}s`;
+                    scoreEl.style.color = prepTimer <= 5 ? "#ff3333" : "#00ff88"; // Краснеет в последние 5 сек
+                }
+                
+                prepTimer--;
+                
+                // Как только таймер дошел до 0 — запускаем новую волну
+                if (prepTimer < 0) {
+                    clearInterval(countdownInterval);
+                    if (scoreEl) scoreEl.style.color = "#d8dee9"; // Возвращаем обычный цвет
+                    currentWave++;
+                    spawnWave(currentWave);
+                }
+            }, 1000);
+            
         } else {
-            alert("Поздравляем! Все 10 волн успешно зачищены!");
-            gameActive = false;
+            // Игрок прошел финальную (10-ю) волну
+            showKillBanner("🏆 VICTORY! SURVIVED THE NIGHT!", false);
+            setTimeout(() => {
+                alert("Поздравляем! Вы отбили все 10 волн нежити!");
+                gameActive = false;
+            }, 3000);
         }
     }
     // --- РЫЧАНИЕ СКЕЛЕТОВ ---
@@ -3734,7 +4215,12 @@ function spawnBoneExplosion(mob) {
                     }
                 }
 
-                // Камера (опускается при скольжении)
+              // === ЗАТУХАНИЕ ВСПЫШКИ ОТ ВЫСТРЕЛА ===
+                if (typeof muzzleFlashLight !== 'undefined' && muzzleFlashLight.intensity > 0) {
+                    muzzleFlashLight.intensity = Math.max(0, muzzleFlashLight.intensity - delta * 35.0);
+                }
+
+             // Камера (опускается при скольжении)
                 const camHeight = slideTimer > 0 ? 1.35 : 2.15;
                 const camOffset = new THREE.Vector3(0.85, camHeight, -2.8);
                 camOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
@@ -3745,6 +4231,32 @@ function spawnBoneExplosion(mob) {
                 lookOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
                 lookOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
                 camera.lookAt(playerGroup.position.clone().add(lookOffset));
+
+                // === СИНХРОНИЗАЦИЯ УШЕЙ ИГРОКА (3D АУДИО) ===
+                if (typeof audioCtx !== 'undefined' && audioCtx.listener) {
+                    const listener = audioCtx.listener;
+                    if (listener.positionX) {
+                        listener.positionX.value = camera.position.x;
+                        listener.positionY.value = camera.position.y;
+                        listener.positionZ.value = camera.position.z;
+                    } else if (listener.setPosition) {
+                        listener.setPosition(camera.position.x, camera.position.y, camera.position.z);
+                    }
+                    const camDir = new THREE.Vector3();
+                    camera.getWorldDirection(camDir);
+                    const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+                    
+                    if (listener.forwardX) {
+                        listener.forwardX.value = camDir.x;
+                        listener.forwardY.value = camDir.y;
+                        listener.forwardZ.value = camDir.z;
+                        listener.upX.value = upVec.x;
+                        listener.upY.value = upVec.y;
+                        listener.upZ.value = upVec.z;
+                    } else if (listener.setOrientation) {
+                        listener.setOrientation(camDir.x, camDir.y, camDir.z, upVec.x, upVec.y, upVec.z);
+                    }
+                }
             }
             // === ОТОБРАЖЕНИЕ ЗДОРОВЬЯ БАРРИКАД ===
             barricades.forEach(bar => {
@@ -3769,7 +4281,7 @@ function spawnBoneExplosion(mob) {
                     if (percent <= 60) color = '#ffaa00'; // Желтый
                     if (percent <= 30) color = '#ff3333'; // Красный
 
-                    lbl.innerHTML = `<span style="color:${color}">🛡️ HP: ${percent}%</span>`;
+                   lbl.innerHTML = `<span style="color:${color}">BARRICADE: ${percent}%</span>`;
 
                     // Вычисляем центральную точку баррикады в 3D
                     const midAngle = (bar.userData.startAngle + bar.userData.endAngle) / 2;
@@ -4050,19 +4562,26 @@ if (typeof socket !== 'undefined') {
     return;
 }
 
-        list.forEach((entry, index) => {
+       list.forEach((entry, index) => {
             const tr = document.createElement('tr');
             let rankClass = '';
             if (index === 0) rankClass = 'lb-rank-1';
             else if (index === 1) rankClass = 'lb-rank-2';
             else if (index === 2) rankClass = 'lb-rank-3';
 
-            const shortAddr = `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
+            // Безопасное отображение: если есть кошелек - режем его, иначе показываем Никнейм
+            let displayName = entry.name || 'Unknown Hero';
+            if (entry.address && entry.address.length >= 42) {
+                displayName = `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
+            }
             
+            // Защита: бекенд может вернуть value, score или wave. Берем то, что есть.
+            const displayValue = entry.value !== undefined ? entry.value : (entry.score || 0);
+
             tr.innerHTML = `
                 <td class="${rankClass}">${index + 1}</td>
-                <td>${shortAddr}</td>
-                <td style="text-align: right; color: #ffaa00; font-weight: bold;">${entry.value}</td>
+                <td>${displayName}</td>
+                <td style="text-align: right; color: #ffaa00; font-weight: bold;">${displayValue}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -4106,10 +4625,13 @@ function triggerGameOver() {
     if (bgmGame) bgmGame.pause();
 
     // Отправляем очки на сервер лидерборда
+   // Отправляем очки на сервер лидерборда
     if (typeof socket !== 'undefined') {
         socket.emit('submit_score', { 
             name: playerName || 'Unknown Hero', 
-            score: score 
+            address: userWalletAddress || '', // Обязательно передаем кошелек для лидерборда
+            score: score,
+            wave: currentWave // Добавляем текущую волну
         });
     }
 
