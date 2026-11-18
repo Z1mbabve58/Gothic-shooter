@@ -45,11 +45,12 @@
         }
         .top-btn:hover { background: rgba(40, 40, 45, 0.95); box-shadow: 0 0 15px rgba(255, 170, 0, 0.5); transform: translateY(-2px); }
 
-        /* Дизайн невидимой кнопки выживания (вернули ей id="btn-train") */
+      /* Дизайн невидимой кнопки выживания (вернули ей id="btn-train") */
        #btn-train {
             position: absolute; bottom: 12%; left: 30%; width: 250px; height: 150px;
-            z-index: 110; cursor: pointer; background: transparent; outline: none;
-            border: none; /* Убрали квадрат */
+            z-index: 9999; /* ИСПРАВЛЕНО: КНОПКА ПОВЕРХ ВСЕГО */
+            cursor: pointer; background: transparent; outline: none;
+            border: none;
             display: flex; align-items: center; justify-content: center; text-align: center; transition: 0.3s;
         }
         #btn-train:hover {
@@ -174,7 +175,15 @@
         #btn-restart {
             background: transparent; border: 2px solid #ffaa00; color: #ffaa00; padding: 14px 40px; font-family: 'Share Tech Mono', monospace; font-size: 24px; cursor: pointer; transition: 0.3s;
         }
-        #btn-restart:hover { background: #ffaa00; color: #000; box-shadow: 0 0 20px #ffaa00; }
+      #btn-restart:hover { background: #ffaa00; color: #000; box-shadow: 0 0 20px #ffaa00; }
+        
+     @keyframes pulseHint { 0% { opacity: 0.5; } 50% { opacity: 1; text-shadow: 0 0 20px #ffaa00; } 100% { opacity: 0.5; } }
+        #click-rifle-hint {
+            display: none; position: absolute; top: 35%; left: 50%; transform: translateX(-50%);
+            color: #ffaa00; font-family: 'Share Tech Mono', monospace, sans-serif; font-size: 38px; font-weight: bold; letter-spacing: 2px;
+            z-index: 105; pointer-events: none; animation: pulseHint 1.5s infinite;
+            text-shadow: 0 0 15px #000; /* Добавил темную тень для контраста */
+        }
     </style>
 </head>
 <body>
@@ -193,7 +202,8 @@
         <button id="btn-restart">MAIN MENU</button>
     </div>
 
-    <div id="main-menu">
+  <div id="main-menu">
+        <div id="click-rifle-hint">CLICK ON THE RIFLE TO START THE GAME</div>
         <!-- Холст для процедурного огня поверх картинки -->
         <canvas id="menu-fire-canvas"></canvas>
         <div id="menu-vignette"></div>
@@ -215,7 +225,7 @@
     </div>
     <!-- Окно ГАЙДА -->
     <div id="guide-modal" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(14, 14, 16, 0.96); border: 2px solid #ffaa00; border-radius: 12px; padding: 30px; display: none; flex-direction: column; gap: 16px; z-index: 150; box-shadow: 0 0 40px rgba(0,0,0,0.9); width: 480px; color: #fff;">
-        <h2 style="font-family: 'Pirata One', cursive; font-size: 36px; color: #ffaa00; text-align: center; margin-bottom: 5px;">HOW TO PLAY</h2>
+        <h2 style="font-family:'Share Tech Mono', monospace; font-size: 36px; color: #ffaa00; text-align: center; margin-bottom: 5px;">HOW TO PLAY</h2>
         
         <div style="font-size: 15px; color: #d8dee9; line-height: 1.7; font-family: 'Share Tech Mono', monospace;">
             <p style="margin-bottom: 12px;">🎯 <b>COMBAT:</b> Score more points by shooting skeletons in the <b>HEAD</b> or <b>HEART</b> (the glowing core).</p>
@@ -312,28 +322,25 @@
         let bossGltf = null;
         const gltfLoader = new THREE.GLTFLoader();
 
-        Promise.all([
-            gltfLoader.loadAsync('golem.glb'),
-            gltfLoader.loadAsync('run.glb'),
-            gltfLoader.loadAsync('punch.glb'),
-            gltfLoader.loadAsync('kick.glb'),
-            gltfLoader.loadAsync('death.glb')
-        ]).then((results) => {
-            bossGltf = results[0]; 
-            bossGltf.animations = [
-                results[1].animations[0], // 0: run
-                results[2].animations[0], // 1: punch
-                results[3].animations[0], // 2: kick
-                results[4].animations[0]  // 3: death
-            ];
+   gltfLoader.loadAsync('golem.glb').then((gltf) => {
+            bossGltf = gltf; 
+            bossGltf.animations = gltf.animations; 
+
+            // --- НОВЫЙ КОД: ВЫВОДИМ СПИСОК АНИМАЦИЙ В КОНСОЛЬ ---
+            console.log("=== СПИСОК АНИМАЦИЙ БОССА ===");
+            gltf.animations.forEach((anim, index) => {
+                console.log(`Индекс ${index}: ${anim.name}`);
+            });
+            // -----------------------------------------------------
+
             bossGltf.scene.traverse(child => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
-            console.log("Модель Голема и все 4 анимации успешно склеены!");
-        }).catch(err => console.error("Ошибка при загрузке файлов Голема:", err));
+            console.log("Новый босс загружен! Найдено анимаций: ", gltf.animations.length);
+        }).catch(err => console.error("Ошибка при загрузке босса:", err));
 
         function crossFadeAnim(mob, newAnimName, duration = 0.2) {
             if (!mob.userData.actions || !mob.userData.actions[newAnimName]) return;
@@ -643,20 +650,41 @@ function createGolemBoss() {
     hitbox.userData.rootMob = g; 
     g.add(hitbox);
 
-    if (bossGltf) {
+   if (bossGltf) {
         const model = THREE.SkeletonUtils.clone(bossGltf.scene);
-        // Модель увеличена с 1.4 до 3.5 (если будет мелковат, ставь 4.5)
-        model.scale.set(3.5, 3.5, 3.5); 
+        
+        // 1. Сбрасываем масштаб. Чужие модели часто уже гигантские. 
+        // Если он окажется мелким, постепенно повышай до 1.5, 2.0 и т.д.
+        // Начни с 0.02 (это в 50 раз меньше, чем 1.0)
+model.scale.set(0.1, 0.1, 0.1);
+
+        // 2. Отключаем автоматическое скрытие (Frustum Culling). 
+        // Это лечит "мелькание" и исчезновение босса при повороте камеры.
+        model.traverse(child => {
+            if (child.isMesh) {
+                child.frustumCulled = false; 
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+
         g.add(model);
 
         const mixer = new THREE.AnimationMixer(model);
         const actions = {};
         
-        if (bossGltf.animations.length >= 4) {
-            actions.run = mixer.clipAction(bossGltf.animations[0]);   
-            actions.punch = mixer.clipAction(bossGltf.animations[1]); 
-            actions.kick = mixer.clipAction(bossGltf.animations[2]);  
-            actions.death = mixer.clipAction(bossGltf.animations[3]); 
+     if (bossGltf.animations && bossGltf.animations.length > 0) {
+            
+            // Берем индексы из консоли:
+            // 2: Combat Run 01 (бег)
+            // 6: Warrior Heavy Attack Sword 01 (удар рукой)
+            // 4: Heavy Charged Attack 01 (мощный удар, который мы назначим вместо пинка)
+            // 8: Death 01 (смерть)
+            
+            actions.run = mixer.clipAction(bossGltf.animations[2]);   
+            actions.punch = mixer.clipAction(bossGltf.animations[6]); 
+            actions.kick = mixer.clipAction(bossGltf.animations[4]);  
+            actions.death = mixer.clipAction(bossGltf.animations[8]); 
             
             actions.death.clampWhenFinished = true;
             actions.death.loop = THREE.LoopOnce;
@@ -688,6 +716,10 @@ const WAVE_CONFIG = [
 ];
 
 let waveInProgress = false;
+let bossesPending = 0;
+let isBossSummoning = false;
+let bossSummonTimer = 0;
+const bossSummonPoint = new THREE.Vector3();
 
 function spawnWave(waveNum) {
     waveInProgress = false;
@@ -696,9 +728,12 @@ function spawnWave(waveNum) {
 
     enemies.forEach(e => scene.remove(e));
     enemies.length = 0;
-    // Очищаем кости от прошлой волны, чтобы движок не лагал
+    
     boneDebris.forEach(b => scene.remove(b.mesh));
     boneDebris.length = 0;
+
+    bossesPending = 0;
+    isBossSummoning = false;
 
     const cfg = WAVE_CONFIG[waveNum - 1] || WAVE_CONFIG[WAVE_CONFIG.length - 1];
 
@@ -710,11 +745,9 @@ function spawnWave(waveNum) {
             const spawnX = playerGroup.position.x + Math.cos(angle) * dist;
             const spawnZ = playerGroup.position.z + Math.sin(angle) * dist;
 
-            // Корректная высота по карте
             const groundY = typeof getGroundHeight === 'function' ? getGroundHeight({ x: spawnX, z: spawnZ }) : 0;
             mob.position.set(spawnX, groundY, spawnZ);
 
-            // Регистрация частей тела для попаданий пуль
             mob.traverse(child => {
                 if (child.isMesh) {
                     child.userData.rootMob = mob;
@@ -727,19 +760,21 @@ function spawnWave(waveNum) {
         }
     }
 
-    // Спавним все 5 типов врагов согласно конфигу текущей волны
     spawnPack(cfg.minion, createMinionMob);
     spawnPack(cfg.rogue, createRogueMob);
     spawnPack(cfg.warrior, createWarriorMob);
     spawnPack(cfg.necromancer, createNecromancerMob);
-    spawnPack(cfg.golem, createGolemBoss);
+    
+    // Откладываем спавн босса в очередь
+    if (cfg.golem > 0) {
+        bossesPending = cfg.golem;
+    }
 
-   const scoreEl = document.getElementById('player-score');
+    const scoreEl = document.getElementById('player-score');
     if (scoreEl) {
         scoreEl.innerText = `ВОЛНА ${waveNum} | ВРАГОВ: ${enemies.length}`;
     }
 
-    // Воспроизводим твою фразу старта волны
     if (typeof speakWaveStart === 'function') speakWaveStart();
 
     waveInProgress = true;
@@ -844,7 +879,7 @@ walletBtn.innerText = `${shortAddress} (... ETH)`;
             walletBtn.innerText = 'Connect wallet';
             walletBtn.style.setProperty('background', '#ffffff', 'important');
             walletBtn.style.setProperty('color', '#111111', 'important');
-            walletBtn.style.fontFamily = "'Pirata One', cursive, sans-serif";
+            walletBtn.style.fontFamily = "'Share Tech Mono', monospace";
             walletBtn.style.fontSize = '19px';
             walletBtn.style.border = 'none';
             walletBtn.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.35)';
@@ -1025,21 +1060,23 @@ socket.on('profile_data', (profile) => {
         document.getElementById('btn-guide').addEventListener('click', () => { guideModal.style.display = 'flex'; });
         document.getElementById('btn-close-guide').addEventListener('click', () => { guideModal.style.display = 'none'; });
 
-       // === БЕСПЛАТНЫЙ ВХОД В ТРЕНИРОВКУ И СМЕНА МУЗЫКИ ===
+      
+           // === БЕСПЛАТНЫЙ ВХОД В ТРЕНИРОВКУ И СМЕНА МУЗЫКИ ===
         const btnTrain = document.getElementById('btn-train');
         if (btnTrain) {
             btnTrain.addEventListener('click', () => {
-                // Плавная смена музыки: выключаем меню, включаем боевую
+                // Если мы еще не ввели ник, не пускаем
+                if (!playerName) return;
+
                 const bgmMenu = document.getElementById('bgm-menu');
                 const bgmGame = document.getElementById('bgm-game');
                 if (bgmMenu) bgmMenu.pause();
                 if (bgmGame) {
                     bgmGame.volume = soundVolume;
-                    bgmGame.currentTime = 0; // Начинаем трек с начала
+                    bgmGame.currentTime = 0; 
                     bgmGame.play().catch(() => {});
                 }
 
-                // Скрываем главное меню и запускаем игровой режим
                 const mainMenu = document.getElementById('main-menu');
                 gameActive = true;
                 if (mainMenu) mainMenu.style.display = 'none';
@@ -1048,9 +1085,29 @@ socket.on('profile_data', (profile) => {
 
                 document.body.requestPointerLock();
 
-                // Запуск 1-й волны
+                // Запуск 1-й волны с таймером
                 currentWave = 1;
-                spawnWave(1);
+                const scoreEl = document.getElementById('player-score');
+                let prepTimer = 15;
+                
+                showKillBanner("GET READY! 15 SECONDS TO PREPARE!", false);
+                
+                const firstWaveInterval = setInterval(() => {
+                    if (!gameActive) {
+                        clearInterval(firstWaveInterval);
+                        return;
+                    }
+                    if (scoreEl) {
+                        scoreEl.innerText = `WAVE 1 IN: ${prepTimer}s`;
+                        scoreEl.style.color = prepTimer <= 5 ? "#ff3333" : "#00ff88";
+                    }
+                    prepTimer--;
+                    if (prepTimer < 0) {
+                        clearInterval(firstWaveInterval);
+                        if (scoreEl) scoreEl.style.color = "#d8dee9";
+                        spawnWave(1);
+                    }
+                }, 1000);
             });
         }
 
@@ -1129,12 +1186,12 @@ const scene = new THREE.Scene();
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         // === НАПРАВЛЕННЫЙ ФОНАРИК НА КАМЕРУ ===
-        const flashlight = new THREE.SpotLight(0xffeedd, 3.5); // Мощность 3.5, теплый белый свет
-        flashlight.position.set(0.3, -0.2, 0.2); // Смещен чуть вправо и вниз (как будто висит на плече/стволе)
-        flashlight.target.position.set(0, 0, -1); // Всегда светит прямо по направлению взгляда
-        flashlight.angle = Math.PI / 7; // Узкий луч для криповой атмосферы (около 25 градусов)
-        flashlight.penumbra = 0.6; // Мягкие, размытые края луча
-        flashlight.distance = 35; // Дальность луча (не освещает всю карту)
+      const flashlight = new THREE.SpotLight(0xffeedd, 6.5); // СВЕТ СТАЛ ЯРЧЕ (6.5)
+        flashlight.position.set(0.3, -0.2, 0.2);
+        flashlight.target.position.set(0, 0, -1);
+        flashlight.angle = Math.PI / 7;
+        flashlight.penumbra = 0.6;
+        flashlight.distance = 50; // ДАЛЬНОСТЬ УВЕЛИЧЕНА (50)
         flashlight.decay = 1.5; // Реалистичное затухание света
         
         camera.add(flashlight);
@@ -1436,12 +1493,12 @@ function createFourBarricades(targetX, targetZ) {
             barGroup.add(diag);
         });
 
-        barGroup.userData = {
+     barGroup.userData = {
             id: def.id,
             index: index,
             isBarricade: true,
-            hp: 350,
-            maxHp: 350,
+            hp: 750,       // УВЕЛИЧЕНО
+            maxHp: 750,    // УВЕЛИЧЕНО
             posts: postsPositions, // точки бревен для расчета коллизий
             radius: radius,
             startAngle: def.startAngle,
@@ -2310,7 +2367,7 @@ createFourBarricades(fireX, fireZ);
                 const p = mob.userData.skelParts;
                 if (!p) return;
 
-              // === НОВЫЙ ИНТЕЛЛЕКТ БОССА (С РАЗНЫМИ АТАКАМИ И СБЛИЖЕНИЕМ) ===
+          // === НОВЫЙ ИНТЕЛЛЕКТ БОССА (С РАЗНЫМИ АТАКАМИ И СБЛИЖЕНИЕМ) ===
                 if (p.isGolem || mob.userData.archetype === 'golem') {
                     if (mob.userData.mixer) mob.userData.mixer.update(0.016);
                     if (mob.userData.hp <= 0) return;
@@ -2319,50 +2376,40 @@ createFourBarricades(fireX, fireZ);
                     if (pPos) dist = Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z);
                     const isBlocked = checkMobBarricadeCollision(mob, 0.016);
 
-                    // Охлаждение атаки
                     mob.userData.attackCooldown = (mob.userData.attackCooldown || 0) - 0.016;
 
-                    // Если анимация удара еще идет — блокируем обычный бег, чтобы не скользил
                     if (mob.userData.attackCooldown > 0) return;
 
-                    // 1. ИГРОК ДАЛЕКО -> ПРОСТО БЕЖИМ
-                    if (dist > 6.0 && !isBlocked) {
+                    // 1. ИГРОК ДАЛЕКО -> БОСС ДОЛЖЕН БЕЖАТЬ ВПЛОТНУЮ (Уменьшили дистанцию начала атаки с 6.0 до 3.0 метров)
+                    if (dist > 3.0 && !isBlocked) {
                         crossFadeAnim(mob, 'run');
                         const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
                         mob.position.addScaledVector(dir, (mob.userData.speed || 5.5) * 0.016);
                     } 
-                    // 2. СРЕДНЯЯ ДИСТАНЦИЯ -> ПРЫЖОК С УДАРОМ НОГОЙ (Сближение)
-                    else if (dist >= 2.5 && dist <= 6.0 && !isBlocked) {
-                        mob.userData.attackCooldown = 2.5; // Время всей анимации прыжка
+                    // 2. СРЕДНЯЯ ДИСТАНЦИЯ -> УДАР С РАЗМАХУ (Без телепортации!)
+                    else if (dist >= 1.8 && dist <= 3.0 && !isBlocked) {
+                        mob.userData.attackCooldown = 2.5; 
                         crossFadeAnim(mob, 'kick');
                         
-                        // Делаем физический рывок вперед прямо в воздухе через 250мс после начала анимации
-                        setTimeout(() => {
-                            if (mob && mob.userData.hp > 0 && pPos) {
-                                const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
-                                mob.position.addScaledVector(dir, 2.5); // Резкое сближение
-                            }
-                        }, 250); 
-
-                        // Наносим урон, когда нога прилетает в игрока (700мс)
+                        // Убрали телепорт (addScaledVector). 
+                        // Теперь урон проходит только если игрок не успел отбежать (радиус поражения снижен до 2.8)
                         setTimeout(() => {
                             if (mob && mob.userData.hp > 0) {
                                 let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
-                                if (hitDist < 4.0) damagePlayer(55); // Мощный урон
+                                if (hitDist < 2.8) damagePlayer(40); // Сбалансированный урон
                             }
                         }, 700);
 
                     } 
-                    // 3. ИГРОК ВПЛОТНУЮ ИЛИ УПЕРСЯ В ЗАБОР -> БЬЕТ РУКОЙ
+                    // 3. ИГРОК ВПЛОТНУЮ ИЛИ БОСС УПЕРСЯ В ЗАБОР -> БЫСТРЫЙ УДАР
                     else {
                         mob.userData.attackCooldown = 1.8;
                         crossFadeAnim(mob, 'punch');
                         
-                        // Наносим урон, когда кулак бьет по игроку (500мс)
                         setTimeout(() => {
                             if (mob && mob.userData.hp > 0) {
                                 let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
-                                if (hitDist < 3.8 || isBlocked) damagePlayer(35);
+                                if (hitDist < 2.5 || isBlocked) damagePlayer(25);
                             }
                         }, 500);
                     }
@@ -2712,37 +2759,53 @@ createFourBarricades(fireX, fireZ);
             document.getElementById('player-score').innerText = `SCORE: ${score}`;
             showKillBanner(`💀 +${amount}`, hitType);
         }
-        const enemySpawnCoords = [
-            { x: 12, z: 18 },
-            { x: -16, z: 22 },
-            { x: 6, z: -20 },
-            { x: -20, z: -8 }
-        ];
+      
+        
 
-        function spawnEnemyWave() {
-            enemySpawnCoords.forEach((pos, idx) => {
-                const enemyGroup = buildCharacterModel(true);
-                // Разброс спавна, чтобы не появлялись в одной точке
-                const ox = (Math.random() - 0.5) * 4;
-                const oz = (Math.random() - 0.5) * 4;
-                enemyGroup.position.set(pos.x + ox, 0, pos.z + oz);
-                enemyGroup.userData.hp = 100;
-                enemyGroup.userData.velY = 0;
-                enemyGroup.userData.isGrounded = true;
-                enemyGroup.userData.shootCooldown = 1.0 + Math.random();
-                enemyGroup.userData.strafeDir = idx % 2 === 0 ? 1 : -1;
-                enemyGroup.userData.strafeTimer = 1.5 + Math.random() * 2;
-                enemyGroup.userData.jumpTimer = 2.0 + Math.random() * 3;
-                enemyGroup.userData.animTime = Math.random() * 10;
-                scene.add(enemyGroup);
-                enemies.push(enemyGroup);
-            });
-        }
-
-        spawnEnemyWave(); // Спавн первой волны
+     
 
         const bloodParticles = [];
         const boneDebris = [];
+        function spawnHitBones(point) {
+            const count = 2 + Math.floor(Math.random() * 2); // 2-3 осколка при каждом попадании
+            for (let i = 0; i < count; i++) {
+                const geo = new THREE.BoxGeometry(0.04, 0.04, 0.12);
+                // Используем материал костей из глобального словаря
+                const mat = (typeof skelMats !== 'undefined' && skelMats.bone) ? skelMats.bone : new THREE.MeshStandardMaterial({ color: 0xd2cbb8, roughness: 0.8 });
+                const mesh = new THREE.Mesh(geo, mat);
+                
+                mesh.position.copy(point);
+                // Небольшой разброс, чтобы они не спавнились в одной точке
+                mesh.position.x += (Math.random() - 0.5) * 0.15;
+                mesh.position.y += (Math.random() - 0.5) * 0.15;
+                mesh.position.z += (Math.random() - 0.5) * 0.15;
+                mesh.castShadow = true;
+                
+                scene.add(mesh);
+                
+                // Взрывной импульс (немного вверх и рандомно в стороны)
+                const speed = 2.5 + Math.random() * 3.5;
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * speed,
+                    1.5 + Math.random() * 2.5, // подскок вверх
+                    (Math.random() - 0.5) * speed
+                );
+                
+                const rotVel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 15.0,
+                    (Math.random() - 0.5) * 15.0,
+                    (Math.random() - 0.5) * 15.0
+                );
+                
+                boneDebris.push({
+                    mesh: mesh,
+                    vel: vel,
+                    rotVel: rotVel,
+                    isGrounded: false,
+                    life: 2.5 // Осколок пропадет через 2.5 секунды, чтобы не грузить ПК
+                });
+            }
+        }
 
 function spawnBoneExplosion(mob) {
     if (!mob) return;
@@ -3526,12 +3589,55 @@ function spawnLegsExplosion(mob) {
 
         document.getElementById('sens-slider').addEventListener('input', (e) => { sens = 0.0008 * e.target.value; });
 
+      let lastMeleeTime = 0; // Для КД ближнего боя
+
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
             if (e.key === '1') setWeapon(1);
             if (e.key === '2') setWeapon(2);
             if (e.key === '3') setWeapon(3);
             if (e.code === 'KeyR' && gameActive) reloadWeapon();
+            
+            // === АТАКА БЛИЖНЕГО БОЯ [F] ===
+            if (e.code === 'KeyF' && gameActive) {
+                const now = performance.now();
+                if (now - lastMeleeTime < 1500) return; // КД 1.5 секунды
+                lastMeleeTime = now;
+
+                // Визуальный взмах оружия
+                if (typeof gunMesh !== 'undefined' && gunMesh) {
+                    gunMesh.rotation.z -= 0.8;
+                    setTimeout(() => { gunMesh.rotation.z += 0.8; }, 150);
+                }
+                if (typeof playPlayerHurtSound === 'function') playPlayerHurtSound();
+
+                let hitSomething = false;
+                const pPos = playerGroup.position.clone();
+                for (let i = 0; i < enemies.length; i++) {
+                    const enemy = enemies[i];
+                    if (enemy.userData.hp <= 0) continue;
+                    
+                    if (pPos.distanceTo(enemy.position) < 3.8) { // Радиус удара
+                        // Урон 120 (Ваншотит обычного 100 ХП, сносит половину бронированному 220 ХП)
+                        enemy.userData.hp -= 120;
+                        hitSomething = true;
+                        
+                        if (typeof createBloodSplatter === 'function') createBloodSplatter(enemy.position.clone().setY(1));
+                        
+                        if (enemy.userData.hp <= 0) {
+                            if (typeof addScore === 'function') addScore(150, 'body');
+                            if (enemy.userData.role !== 'boss') {
+                                if (typeof playSpatialMP3 === 'function') playSpatialMP3(skelDeathBuffers, enemy.position, 0.4, 20);
+                                if (typeof spawnBoneExplosion === 'function') spawnBoneExplosion(enemy);
+                                scene.remove(enemy);
+                                enemies.splice(i, 1);
+                                i--;
+                            }
+                        }
+                    }
+                }
+                if (hitSomething) showKillBanner("🔪 MELEE STRIKE!", false);
+            }
             
            if (e.code === 'KeyE' && gameActive) {
                 let pPos = playerGroup ? playerGroup.position : camera.position;
@@ -3721,6 +3827,9 @@ function spawnLegsExplosion(mob) {
                             }
                         }
 hitEnemy.userData.hp -= finalDmg;
+
+                        // ВЫЗЫВАЕМ ОТЛЕТАЮЩИЕ ОСКОЛКИ КОСТЕЙ!
+                        spawnHitBones(hits[0].point);
 
                         if (typeof createBloodSplatter === 'function') createBloodSplatter(hits[0].point);
 
@@ -4046,51 +4155,55 @@ hitEnemy.userData.hp -= finalDmg;
                         enemy.position.y = getGroundHeight(enemy.position);
                     }
                 }
- // === ПРОВЕРКА ЗАВЕРШЕНИЯ ВОЛНЫ (ПЕРЕХОД К СЛЕДУЮЩЕЙ) ===
-    if (gameActive && waveInProgress && enemies.length === 0) {
-        waveInProgress = false; // Блокируем случайные повторные срабатывания
-        
-        if (currentWave < 10) {
-            // Показываем красивый баннер победы над волной
-            showKillBanner("⚔️ WAVE CLEARED! PREPARE YOUR DEFENSES!", false);
+// === ПРОВЕРКА ЗАВЕРШЕНИЯ ВОЛНЫ ИЛИ СПАВНА БОССА ===
+    if (gameActive && waveInProgress && enemies.length === 0 && !isBossSummoning) {
+        if (bossesPending > 0) {
+            isBossSummoning = true;
+            bossSummonTimer = 4.5; 
             
-            // Воспроизводим фразу конца волны
-            if (typeof speakWaveCleared === 'function') speakWaveCleared();
+            bossSummonPoint.set(
+                playerGroup.position.x + Math.sin(yaw + Math.PI) * 15,
+                0,
+                playerGroup.position.z + Math.cos(yaw + Math.PI) * 15
+            );
+            bossSummonPoint.y = typeof getGroundHeight === 'function' ? getGroundHeight(bossSummonPoint) : 0;
             
-            let prepTimer = 15; // 15 секунд на починку и сбор дров
-            const scoreEl = document.getElementById('player-score');
-            
-            // Запускаем обратный отсчет
-            const countdownInterval = setInterval(() => {
-                // Если игрок умер во время передышки, останавливаем таймер
-                if (!gameActive) {
-                    clearInterval(countdownInterval);
-                    return;
-                }
-                
-                if (scoreEl) {
-                    scoreEl.innerText = `NEXT WAVE IN: ${prepTimer}s`;
-                    scoreEl.style.color = prepTimer <= 5 ? "#ff3333" : "#00ff88"; // Краснеет в последние 5 сек
-                }
-                
-                prepTimer--;
-                
-                // Как только таймер дошел до 0 — запускаем новую волну
-                if (prepTimer < 0) {
-                    clearInterval(countdownInterval);
-                    if (scoreEl) scoreEl.style.color = "#d8dee9"; // Возвращаем обычный цвет
-                    currentWave++;
-                    spawnWave(currentWave);
-                }
-            }, 1000);
+            showKillBanner("⚠️ BONES ARE GATHERING...", 'core');
+            if (typeof playSkeletonGrowlSound === 'function') playSkeletonGrowlSound(bossSummonPoint);
             
         } else {
-            // Игрок прошел финальную (10-ю) волну
-            showKillBanner("🏆 VICTORY! SURVIVED THE NIGHT!", false);
-            setTimeout(() => {
-                alert("Поздравляем! Вы отбили все 10 волн нежити!");
-                gameActive = false;
-            }, 3000);
+            waveInProgress = false; 
+            if (currentWave < 10) {
+                showKillBanner("⚔️ WAVE CLEARED! PREPARE YOUR DEFENSES!", false);
+                if (typeof speakWaveCleared === 'function') speakWaveCleared();
+                
+                let prepTimer = 15; 
+                const scoreEl = document.getElementById('player-score');
+                
+                const countdownInterval = setInterval(() => {
+                    if (!gameActive) {
+                        clearInterval(countdownInterval);
+                        return;
+                    }
+                    if (scoreEl) {
+                        scoreEl.innerText = `NEXT WAVE IN: ${prepTimer}s`;
+                        scoreEl.style.color = prepTimer <= 5 ? "#ff3333" : "#00ff88"; 
+                    }
+                    prepTimer--;
+                    if (prepTimer < 0) {
+                        clearInterval(countdownInterval);
+                        if (scoreEl) scoreEl.style.color = "#d8dee9"; 
+                        currentWave++;
+                        spawnWave(currentWave);
+                    }
+                }, 1000);
+            } else {
+                showKillBanner("🏆 VICTORY! SURVIVED THE NIGHT!", false);
+                setTimeout(() => {
+                    alert("Поздравляем! Вы отбили все 10 волн нежити!");
+                    gameActive = false;
+                }, 3000);
+            }
         }
     }
     // --- РЫЧАНИЕ СКЕЛЕТОВ ---
@@ -4185,24 +4298,91 @@ hitEnemy.userData.hp -= finalDmg;
                         bloodParticles.splice(i, 1);
                     }
                 }
-                // Физика разлёта костей от убитых скелетов
-                for (let i = 0; i < boneDebris.length; i++) {
-                    const b = boneDebris[i];
-                    if (!b.isGrounded) {
-                        // Полёт и гравитация
-                        b.mesh.position.addScaledVector(b.vel, delta);
-                        b.vel.y -= 22.0 * delta; // Гравитация
+            // === ТАЙМЕР ПРИЗЫВА БОССА И СПАВН ===
+                if (isBossSummoning) {
+                    bossSummonTimer -= delta;
+                    if (bossSummonTimer <= 0) {
+                        isBossSummoning = false;
+                        
+                        boneDebris.forEach(b => scene.remove(b.mesh));
+                        boneDebris.length = 0;
+                        
+                        for (let i = 0; i < bossesPending; i++) {
+                            const boss = createGolemBoss();
+                            boss.position.set(bossSummonPoint.x + (i * 2), bossSummonPoint.y, bossSummonPoint.z + (i * 2));
+                            boss.traverse(child => {
+                                if (child.isMesh) {
+                                    child.userData.rootMob = boss;
+                                    child.castShadow = true;
+                                }
+                            });
+                            scene.add(boss);
+                            enemies.push(boss);
+                        }
+                        bossesPending = 0;
+                        
+                        showKillBanner("🔥 THE TITAN HAS AWOKEN!", 'core');
+                        if (typeof playBoneCrunchSound === 'function') playBoneCrunchSound();
+                        
+                        const scoreEl = document.getElementById('player-score');
+                        if (scoreEl) scoreEl.innerText = `BOSS FIGHT | ВРАГОВ: ${enemies.length}`;
+                    }
+                }
 
-                        // Вращение в воздухе
+                // === ФИЗИКА РАЗЛЁТА И МАГИЧЕСКОГО СБОРА КОСТЕЙ ===
+                for (let i = boneDebris.length - 1; i >= 0; i--) {
+                    const b = boneDebris[i];
+                    
+                    if (b.life !== undefined && !isBossSummoning) {
+                        b.life -= delta;
+                        if (b.life <= 0) {
+                            scene.remove(b.mesh);
+                            boneDebris.splice(i, 1);
+                            continue;
+                        }
+                        if (b.life < 0.5) {
+                            const sc = b.life * 2.0;
+                            b.mesh.scale.set(sc, sc, sc);
+                        }
+                    }
+                    
+                    if (isBossSummoning) {
+                        b.isGrounded = false;
+                        const targetY = bossSummonPoint.y + 2.0; 
+                        const dir = new THREE.Vector3(
+                            bossSummonPoint.x - b.mesh.position.x, 
+                            targetY - b.mesh.position.y, 
+                            bossSummonPoint.z - b.mesh.position.z
+                        );
+                        
+                        if (dir.length() > 0.8) {
+                            dir.normalize();
+                            b.vel.lerp(dir.multiplyScalar(22), delta * 4.0);
+                            b.vel.x += (Math.random() - 0.5) * 6.0;
+                            b.vel.y += (Math.random() - 0.5) * 6.0;
+                            b.vel.z += (Math.random() - 0.5) * 6.0;
+                        } else {
+                            b.vel.set(0, (Math.random() - 0.5) * 2.0, 0); 
+                        }
+                        
+                        b.mesh.position.addScaledVector(b.vel, delta);
+                        b.mesh.rotation.x += b.rotVel.x * delta * 2;
+                        b.mesh.rotation.y += b.rotVel.y * delta * 2;
+                        b.mesh.rotation.z += b.rotVel.z * delta * 2;
+                        continue; 
+                    }
+
+                    if (!b.isGrounded) {
+                        b.mesh.position.addScaledVector(b.vel, delta);
+                        b.vel.y -= 22.0 * delta; 
+                        
                         b.mesh.rotation.x += b.rotVel.x * delta;
                         b.mesh.rotation.y += b.rotVel.y * delta;
                         b.mesh.rotation.z += b.rotVel.z * delta;
 
-                        // Проверка высоты пола
                         const groundH = typeof getGroundHeight === 'function' ? getGroundHeight(b.mesh.position) : 0;
-                        if (b.mesh.position.y <= groundH + 0.08) {
-                            b.mesh.position.y = groundH + 0.08;
-                            // Если скорость удара была высокой — лёгкий отскок с затуханием
+                        if (b.mesh.position.y <= groundH + 0.04) {
+                            b.mesh.position.y = groundH + 0.04;
                             if (b.vel.y < -3.5) {
                                 b.vel.y = -b.vel.y * 0.35;
                                 b.vel.x *= 0.5;
@@ -4315,14 +4495,8 @@ hitEnemy.userData.hp -= finalDmg;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        // ==========================================
-        // НАСТРОЙКА 3D ДИОРАМЫ ГЛАВНОГО МЕНЮ
-        // ==========================================
-       // ==========================================
-        // АНИМАЦИЯ КОСТРА И ИСКР ПОВЕРХ КАРТИНКИ
-        // ==========================================
-       // ==========================================
-        // АНИМАЦИЯ КОСТРА И ИСКР ПОВЕРХ КАРТИНКИ
+      // ==========================================
+        // НАСТРОЙКА 3D ДИОРАМЫ ГЛАВНОГО МЕНЮ И КОСТРА
         // ==========================================
         (function initMenuFireFx() {
             const canvas = document.getElementById('menu-fire-canvas');
@@ -4360,103 +4534,11 @@ hitEnemy.userData.hp -= finalDmg;
                 if (gameActive) return; 
                 requestAnimationFrame(loop);
 
-                const time = performance.now(); // Защита от ошибки времени
+                const time = performance.now();
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 const fireX = canvas.width * 0.642; 
                 const fireY = canvas.height * 0.745;
-
-                const t = time * 0.003;
-                
-                const pulse = Math.sin(t * 7) * 0.08 + Math.cos(t * 11) * 0.05;
-                const glowRadius = Math.max(90, canvas.width * 0.12) * (1 + pulse);
-                const grad = ctx.createRadialGradient(fireX, fireY - 15, 10, fireX, fireY - 15, glowRadius);
-                grad.addColorStop(0, 'rgba(255, 140, 20, 0.55)');
-                grad.addColorStop(0.4, 'rgba(255, 60, 0, 0.25)');
-                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(fireX, fireY - 15, glowRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                flameTongues.forEach(f => {
-                    const wave = Math.sin(t * f.speed + f.phase);
-                    const waveH = Math.cos(t * (f.speed * 1.3) + f.phase);
-                    const curW = f.w * (0.85 + wave * 0.25);
-                    const curH = f.h * (0.9 + waveH * 0.35);
-                    ctx.fillStyle = f.color;
-                    ctx.globalAlpha = 0.55 + wave * 0.25;
-                    ctx.fillRect(fireX + f.ox - curW / 2, fireY + f.oy - curH, curW, curH);
-                });
-                ctx.globalAlpha = 1.0;
-
-                sparks.forEach(s => {
-                    if (s.life <= 0) {
-                        s.x = fireX + (Math.random() - 0.5) * 26;
-                        s.y = fireY + (Math.random() - 0.5) * 14;
-                        s.vx = (Math.random() - 0.5) * 1.5;
-                        s.vy = -(1.6 + Math.random() * 3.0);
-                        s.life = 1.0;
-                    }
-                    s.x += s.vx + Math.sin(time * 0.005 + s.x) * 0.35;
-                    s.y += s.vy;
-                    s.life -= s.decay;
-                    ctx.fillStyle = s.color;
-                    ctx.globalAlpha = Math.max(0, s.life);
-                    ctx.fillRect(s.x, s.y, s.size, s.size);
-                });
-                ctx.globalAlpha = 1.0;
-            }
-            gameActive = false;
-            loop(); // Стартуем безопасно
-        })();
-
-        // Вызываем настройку диорамы при загрузке страницы
-       // ==========================================
-        // АНИМАЦИЯ КОСТРА И ИСКР ПОВЕРХ КАРТИНКИ
-        // ==========================================
-        (function initMenuFireFx() {
-            const canvas = document.getElementById('menu-fire-canvas');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-
-            function resize() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            }
-            window.addEventListener('resize', resize);
-            resize();
-
-            const sparks = [];
-            const flameTongues = [];
-
-            for (let i = 0; i < 40; i++) {
-                sparks.push({
-                    x: 0, y: 0, vx: (Math.random() - 0.5) * 1.8, vy: -(1.4 + Math.random() * 2.6),
-                    size: 2 + Math.random() * 3, life: Math.random(), decay: 0.008 + Math.random() * 0.012,
-                    color: Math.random() > 0.35 ? '#ffaa22' : '#ff3300'
-                });
-            }
-
-            for (let i = 0; i < 16; i++) {
-                flameTongues.push({
-                    ox: (Math.random() - 0.5) * 32, oy: (Math.random() - 0.5) * 18,
-                    w: 16 + Math.random() * 20, h: 28 + Math.random() * 40,
-                    phase: Math.random() * Math.PI * 2, speed: 3 + Math.random() * 4,
-                    color: ['#ffdd55', '#ff9911', '#ff4400'][Math.floor(Math.random() * 3)]
-                });
-            }
-
-            function loop(time) {
-                if (gameActive) return; 
-                requestAnimationFrame(loop);
-
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Центр костра на твоей картинке
-                const fireX = canvas.width * 0.642; 
-                const fireY = canvas.height * 0.745;
-
                 const t = time * 0.003;
                 
                 const pulse = Math.sin(t * 7) * 0.08 + Math.cos(t * 11) * 0.05;
@@ -4498,151 +4580,148 @@ hitEnemy.userData.hp -= finalDmg;
                 });
                 ctx.globalAlpha = 1.0;
             }
-            requestAnimationFrame(loop);
             gameActive = false;
+            loop();
         })();
-        setWeapon(1);
-        animate();
+
+        setWeapon(2); // Старт с автоматом
+        animate(); 
+
         // === ЛОГИКА ЛИДЕРБОРДА ===
-let currentLbTab = 'training';
+        let currentLbTab = 'training';
 
-const lbModal = document.getElementById('leaderboard-modal');
-const lbOpenBtn = document.getElementById('btn-leaderboard-open');
-const lbCloseBtn = document.getElementById('btn-lb-close');
+        const lbModal = document.getElementById('leaderboard-modal');
+        const lbOpenBtn = document.getElementById('btn-leaderboard-open');
+        const lbCloseBtn = document.getElementById('btn-lb-close');
 
-if (lbOpenBtn && lbModal) {
-    lbOpenBtn.onclick = () => {
-        lbModal.style.display = 'block';
-        loadLeaderboard(currentLbTab);
-    };
-}
-if (lbCloseBtn && lbModal) {
-    lbCloseBtn.onclick = () => {
-        lbModal.style.display = 'none';
-    };
-}
-
-function switchLbTab(tab) {
-    currentLbTab = tab;
-    document.querySelectorAll('.lb-tab-btn').forEach(btn => btn.classList.remove('active'));
-    if (window.event && window.event.target) {
-        window.event.target.classList.add('active');
-    }
-    
-    const colTitle = document.getElementById('lb-val-col-title');
-    if (colTitle) {
-        if (tab === 'training') {
-            colTitle.innerText = "Max Wave";
-        } else if (tab === 'duel_weekly') {
-            colTitle.innerText = "Weekly Wins";
-        } else {
-            colTitle.innerText = "Monthly Points";
+        if (lbOpenBtn && lbModal) {
+            lbOpenBtn.onclick = () => {
+                lbModal.style.display = 'block';
+                loadLeaderboard(currentLbTab);
+            };
         }
-    }
-    
-    loadLeaderboard(tab);
-}
+        if (lbCloseBtn && lbModal) {
+            lbCloseBtn.onclick = () => {
+                lbModal.style.display = 'none';
+            };
+        }
 
-function loadLeaderboard(tab) {
-    if (typeof socket !== 'undefined') {
-        socket.emit('get_leaderboard', tab);
-    }
-}
-
-// Прием данных лидерборда от сервера
-if (typeof socket !== 'undefined') {
-    socket.on('leaderboard_data', ({ tab, list }) => {
-        if (tab !== currentLbTab) return;
-        const tbody = document.getElementById('lb-table-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
-
-       if (!list || list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#666; padding:20px;">No data for this season</td></tr>`;
-    return;
-}
-
-       list.forEach((entry, index) => {
-            const tr = document.createElement('tr');
-            let rankClass = '';
-            if (index === 0) rankClass = 'lb-rank-1';
-            else if (index === 1) rankClass = 'lb-rank-2';
-            else if (index === 2) rankClass = 'lb-rank-3';
-
-            // Безопасное отображение: если есть кошелек - режем его, иначе показываем Никнейм
-            let displayName = entry.name || 'Unknown Hero';
-            if (entry.address && entry.address.length >= 42) {
-                displayName = `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
+        function switchLbTab(tab) {
+            currentLbTab = tab;
+            document.querySelectorAll('.lb-tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (window.event && window.event.target) {
+                window.event.target.classList.add('active');
             }
             
-            // Защита: бекенд может вернуть value, score или wave. Берем то, что есть.
-            const displayValue = entry.value !== undefined ? entry.value : (entry.score || 0);
+            const colTitle = document.getElementById('lb-val-col-title');
+            if (colTitle) {
+                if (tab === 'training') {
+                    colTitle.innerText = "Max Wave";
+                } else if (tab === 'duel_weekly') {
+                    colTitle.innerText = "Weekly Wins";
+                } else {
+                    colTitle.innerText = "Monthly Points";
+                }
+            }
+            loadLeaderboard(tab);
+        }
 
-            tr.innerHTML = `
-                <td class="${rankClass}">${index + 1}</td>
-                <td>${displayName}</td>
-                <td style="text-align: right; color: #ffaa00; font-weight: bold;">${displayValue}</td>
-            `;
-            tbody.appendChild(tr);
+        function loadLeaderboard(tab) {
+            if (typeof socket !== 'undefined') {
+                socket.emit('get_leaderboard', tab);
+            }
+        }
+
+        if (typeof socket !== 'undefined') {
+            socket.on('leaderboard_data', ({ tab, list }) => {
+                if (tab !== currentLbTab) return;
+                const tbody = document.getElementById('lb-table-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+
+                if (!list || list.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#666; padding:20px;">No data for this season</td></tr>`;
+                    return;
+                }
+
+                list.forEach((entry, index) => {
+                    const tr = document.createElement('tr');
+                    let rankClass = '';
+                    if (index === 0) rankClass = 'lb-rank-1';
+                    else if (index === 1) rankClass = 'lb-rank-2';
+                    else if (index === 2) rankClass = 'lb-rank-3';
+
+                    let displayName = entry.name || 'Unknown Hero';
+                    if (entry.address && entry.address.length >= 42) {
+                        displayName = `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
+                    }
+                    
+                    const displayValue = entry.value !== undefined ? entry.value : (entry.score || 0);
+
+                    tr.innerHTML = `
+                        <td class="${rankClass}">${index + 1}</td>
+                        <td>${displayName}</td>
+                        <td style="text-align: right; color: #ffaa00; font-weight: bold;">${displayValue}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        // === СИСТЕМА НИКНЕЙМОВ И ПОДСКАЗОК ===
+        let playerName = localStorage.getItem('gothic_player_name');
+
+        window.addEventListener('load', () => {
+            if (!playerName) {
+                document.getElementById('nickname-modal').style.display = 'flex';
+            } else {
+                const hint = document.getElementById('click-rifle-hint');
+                if (hint) hint.style.display = 'block';
+            }
         });
-    });
-}
-// === СИСТЕМА НИКНЕЙМОВ И GAME OVER ===
-let playerName = localStorage.getItem('gothic_player_name');
 
-// При загрузке страницы проверяем, есть ли сохраненный ник
-window.addEventListener('load', () => {
-    if (!playerName) {
-        document.getElementById('nickname-modal').style.display = 'flex';
-    }
-});
-
-// Сохранение ника
-document.getElementById('btn-save-nickname').addEventListener('click', () => {
-    const val = document.getElementById('nickname-input').value.trim();
-    if (val.length > 2) {
-        playerName = val;
-        localStorage.setItem('gothic_player_name', playerName);
-        document.getElementById('nickname-modal').style.display = 'none';
-    } else {
-        alert("Name must be at least 3 characters!");
-    }
-});
-
-// Перезапуск игры из меню смерти
-document.getElementById('btn-restart').addEventListener('click', () => {
-    location.reload(); 
-});
-
-// Единая функция СМЕРТИ (вызывается, когда HP <= 0)
-function triggerGameOver() {
-    if (!gameActive) return; // Защита от двойного срабатывания
-    gameActive = false;
-    document.exitPointerLock(); // Освобождаем мышку
-
-    // Останавливаем музыку боя
-    const bgmGame = document.getElementById('bgm-game');
-    if (bgmGame) bgmGame.pause();
-
-    // Отправляем очки на сервер лидерборда
-   // Отправляем очки на сервер лидерборда
-    if (typeof socket !== 'undefined') {
-        socket.emit('submit_score', { 
-            name: playerName || 'Unknown Hero', 
-            address: userWalletAddress || '', // Обязательно передаем кошелек для лидерборда
-            score: score,
-            wave: currentWave // Добавляем текущую волну
+        document.getElementById('btn-save-nickname').addEventListener('click', () => {
+            const val = document.getElementById('nickname-input').value.trim();
+            if (val.length > 2) {
+                playerName = val;
+                localStorage.setItem('gothic_player_name', playerName);
+                document.getElementById('nickname-modal').style.display = 'none';
+                
+                const hint = document.getElementById('click-rifle-hint');
+                if (hint) hint.style.display = 'block';
+            } else {
+                alert("Name must be at least 3 characters!");
+            }
         });
-    }
 
-    // Показываем кровавый экран смерти
-    const goScreen = document.getElementById('game-over-screen');
-    const finalScoreLabel = document.getElementById('final-score-display');
-    if (goScreen && finalScoreLabel) {
-        finalScoreLabel.innerText = `FINAL SCORE: ${score}`;
-        goScreen.style.display = 'flex';
-    }
-}
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            location.reload(); 
+        });
+
+        function triggerGameOver() {
+            if (!gameActive) return; 
+            gameActive = false;
+            document.exitPointerLock();
+
+            const bgmGame = document.getElementById('bgm-game');
+            if (bgmGame) bgmGame.pause();
+
+            if (typeof socket !== 'undefined') {
+                socket.emit('submit_score', { 
+                    name: playerName || 'Unknown Hero', 
+                    address: userWalletAddress || '',
+                    score: score,
+                    wave: currentWave
+                });
+            }
+
+            const goScreen = document.getElementById('game-over-screen');
+            const finalScoreLabel = document.getElementById('final-score-display');
+            if (goScreen && finalScoreLabel) {
+                finalScoreLabel.innerText = `FINAL SCORE: ${score}`;
+                goScreen.style.display = 'flex';
+            }
+        }
     </script>
 </body>
 </html>
