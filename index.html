@@ -13,7 +13,7 @@
 <!-- Подключение Socket.io для матчинга -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+       * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Share Tech Mono', monospace; color: #eee; }
 
      /* Фон меню: твоя картинка bg.jpg */
@@ -89,18 +89,41 @@
         .setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
         .setting-row input[type="range"] { accent-color: #b30000; width: 140px; }
 
-        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); pointer-events: none; }
-        #crosshair::before {
-            content: ''; position: absolute; top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%);
-            background: linear-gradient(to bottom, #ffffff 0px, #ffffff 6px, transparent 6px, transparent 16px, #ffffff 16px, #ffffff 22px);
-            filter: drop-shadow(0 0 1px #000000);
+      #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+
+        /* Полоски здоровья и брони слева сверху */
+        #status-bars {
+            position: absolute; top: 20px; left: 22px; width: 240px;
+            display: flex; flex-direction: column; gap: 7px; pointer-events: none; z-index: 110;
         }
-        #crosshair::after {
-            content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%);
-            background: linear-gradient(to right, #ffffff 0px, #ffffff 6px, transparent 6px, transparent 16px, #ffffff 16px, #ffffff 22px);
-            filter: drop-shadow(0 0 1px #000000);
+        .bar-track {
+            position: relative; width: 100%; height: 16px; background: rgba(10, 10, 14, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 3px; overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
         }
+        .bar-track.armor { height: 10px; border-color: rgba(93, 173, 226, 0.35); }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.15s ease-out; }
+        #hp-bar-fill { background: linear-gradient(90deg, #8b0000, #e62222); box-shadow: 0 0 10px rgba(255, 34, 34, 0.6); }
+        #armor-bar-fill { background: linear-gradient(90deg, #1b4f72, #5dade2); box-shadow: 0 0 8px rgba(93, 173, 226, 0.5); }
+        #hud-hints { margin-top: 3px; font-size: 12px; color: #8c95a6; text-shadow: 0 1px 4px #000; display: flex; flex-direction: column; gap: 2px; }
+        #shoulder-indicator { color: #ffaa00; }
+
+        /* Динамический прицел */
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; }
+        .ch-dot { position: absolute; left: -1.5px; top: -1.5px; width: 3px; height: 3px; background: #fff; border-radius: 50%; box-shadow: 0 0 2px #000; }
+        .ch-line { position: absolute; background: #fff; box-shadow: 0 0 2px #000; transition: transform 0.05s linear; }
+        .ch-top    { width: 2px; height: 8px; left: -1px; bottom: 0; }
+        .ch-bottom { width: 2px; height: 8px; left: -1px; top: 0; }
+        .ch-left   { height: 2px; width: 8px; top: -1px; right: 0; }
+        .ch-right  { height: 2px; width: 8px; top: -1px; left: 0; }
+
+        /* Хитмаркер попадания */
+        #hitmarker {
+            position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
+            transform: translate(-50%, -50%) scale(0.8); pointer-events: none; opacity: 0; transition: 0.12s ease-out;
+        }
+        #hitmarker.show { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+        #hitmarker svg { width: 100%; height: 100%; stroke-width: 2.5; stroke-linecap: round; filter: drop-shadow(0 0 2px #000); }
 
         #weapon-slots { position: absolute; bottom: 25px; right: 30px; display: flex; align-items: flex-end; gap: 12px; pointer-events: none; }
         .slot {
@@ -120,8 +143,6 @@
         }
         #ammo-display .ammo-cur { font-size: 40px; font-weight: bold; color: #ffaa00; }
         #ammo-display.reloading .ammo-cur { font-size: 24px; color: #ff3333; letter-spacing: 1px; }
-        #esc-hint { position: absolute; top: 20px; left: 20px; font-size: 13px; color: #777; }
-        #player-hp { position: absolute; top: 20px; right: 30px; font-size: 24px; color: #ff3333; font-family: 'Pirata One', cursive; text-shadow: 0 0 10px #b30000; }
 
         /* Лидерборд Модалка */
         #leaderboard-modal {
@@ -227,16 +248,16 @@
     <div id="guide-modal" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(14, 14, 16, 0.96); border: 2px solid #ffaa00; border-radius: 12px; padding: 30px; display: none; flex-direction: column; gap: 16px; z-index: 150; box-shadow: 0 0 40px rgba(0,0,0,0.9); width: 480px; color: #fff;">
         <h2 style="font-family:'Share Tech Mono', monospace; font-size: 36px; color: #ffaa00; text-align: center; margin-bottom: 5px;">HOW TO PLAY</h2>
         
-        <div style="font-size: 15px; color: #d8dee9; line-height: 1.7; font-family: 'Share Tech Mono', monospace;">
-            <p style="margin-bottom: 12px;">🎯 <b>COMBAT:</b> Score more points by shooting skeletons in the <b>HEAD</b> or <b>HEART</b> (the glowing core).</p>
+     <div style="font-size: 14px; color: #d8dee9; line-height: 1.65; font-family: 'Share Tech Mono', monospace;">
+            <p style="margin-bottom: 10px;">🎯 <b>COMBAT:</b> Shoot skeletons in the <b>HEAD</b> (2x) or glowing <b>HEART</b> (3x). Knock off iron helmets with 1 headshot, and shatter heavy armor with the <b>AXE</b> (1 hit), <b>RIFLE</b> (5 shots), or <b>SHOTGUN</b> (1–2 shots).</p>
             
-            <p style="margin-bottom: 12px;">🔥 <b>CAMPFIRE:</b> Press <b>[E]</b> near the fire to throw wood in. Keep the area illuminated!</p>
+            <p style="margin-bottom: 10px;">🌑 <b>DARKNESS:</b> Leaving the campfire light deals damage every <b>5 seconds</b>. Base damage grows with waves (<b>1 HP</b> on waves 1–3, <b>2 HP</b> from wave 4, <b>3 HP</b> from wave 7) and increases the deeper you go into the forest. <b>Full Moon</b> waves (5, 7, 10) light up the map safely!</p>
             
-            <p style="margin-bottom: 12px;">🛡️ <b>DEFENSE:</b> Press <b>[E]</b> near damaged barricades to repair them and hold off the horde.</p>
+            <p style="margin-bottom: 10px;">🔥 <b>CAMPFIRE &amp; DEFENSE:</b> Gather wood in the forest and press <b>[E]</b> near the fire to fuel it, or near barricades to repair them.</p>
             
-            <p style="margin-bottom: 12px; border-top: 1px solid #333; padding-top: 12px;">⌨️ <b>CONTROLS:</b> WASD (Move) | SHIFT (Sprint) | SPACE (Jump) | 1-3 (Weapons) | ESC (Menu)</p>
+            <p style="margin-bottom: 10px; border-top: 1px solid #333; padding-top: 10px;">⌨️ <b>CONTROLS:</b> WASD (Move) | C/SHIFT (Slide) | SPACE (Jump) | RMB (Aim) | Q (Shoulder) | 1: Axe, 2: Rifle, 3: Shotgun | R (Reload) | ESC (Menu)</p>
             
-            <p style="margin-top: 16px; text-align: center; color: #ff3333; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px rgba(255,0,0,0.5);">CLICK ON THE RIFLE IN THE MENU TO START!</p>
+            <p style="margin-top: 12px; text-align: center; color: #ff3333; font-weight: bold; font-size: 17px; text-shadow: 0 0 10px rgba(255,0,0,0.5);">CLICK ON THE RIFLE IN THE MENU TO START!</p>
         </div>
         
         <button id="btn-close-guide" style="font-size: 20px; margin-top: 10px; background:#ffaa00; color:#000; border:none; padding:10px 16px; cursor:pointer; font-family: 'Pirata One', cursive; border-radius: 6px; transition: 0.2s;">GOT IT</button>
@@ -249,14 +270,63 @@
        <div style="font-size: 12px; color: #777; line-height: 1.6; border-top: 1px solid #222; padding-top: 12px;">
     Controls:<br>• WASD — Move | Shift — Sprint | Space — Jump<br>• 1: Sniper | 2: Rifle | 3: Shotgun<br>• LMB — Shoot | Esc — Menu
 </div>
-        <button id="btn-close-settings" style="font-size: 18px; margin-top: 6px; background:#fff; border:none; padding:8px 16px; cursor:pointer; font-family: 'Pirata One', cursive;">Close</button>
+      <button id="btn-close-settings" style="font-size: 18px; margin-top: 6px; background:#fff; border:none; padding:8px 16px; cursor:pointer; font-family: 'Pirata One', cursive;">Close</button>
     </div>
 
-    <div id="hud">
-        <div id="crosshair"></div>
-       <div id="esc-hint">[ESC] — Back to Menu</div>
-        <div id="player-hp">HP: 100</div>
-        <div id="player-score" style="position: absolute; top: 60px; right: 30px; font-size: 20px; color: #d8dee9; font-family: 'Share Tech Mono', monospace; text-shadow: 0 0 8px rgba(255,255,255,0.4);">SCORE: 0</div>
+    <!-- Окно Лидерборда -->
+    <div id="leaderboard-modal">
+        <div class="lb-header">
+            <h2>LEADERBOARD</h2>
+            <button class="lb-close" id="btn-lb-close">&times;</button>
+        </div>
+        <div id="lb-status" style="font-size:12px; color:#888; margin-top:6px;">Connecting to server...</div>
+        <div class="lb-tabs">
+            <button class="lb-tab-btn active" onclick="switchLbTab('training')">Training</button>
+            <button class="lb-tab-btn" onclick="switchLbTab('duel_weekly')">Weekly Duels</button>
+            <button class="lb-tab-btn" onclick="switchLbTab('duel_monthly')">Monthly Duels</button>
+        </div>
+        <table class="lb-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Player</th>
+                    <th id="lb-val-col-title" style="text-align: right;">Score / Wave</th>
+                </tr>
+            </thead>
+            <tbody id="lb-table-body">
+                <tr><td colspan="3" style="text-align:center; color:#666; padding:20px;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+  <div id="hud">
+        <div id="status-bars">
+            <div class="bar-track"><div class="bar-fill" id="hp-bar-fill"></div></div>
+            <div class="bar-track armor"><div class="bar-fill" id="armor-bar-fill"></div></div>
+            <div id="hud-hints">
+                <span id="shoulder-indicator">[Q] SHOULDER: RIGHT</span>
+                <span>[ESC] — Back to Menu</span>
+            </div>
+        </div>
+
+        <div id="crosshair">
+            <div class="ch-dot"></div>
+            <div class="ch-line ch-top" id="ch-top"></div>
+            <div class="ch-line ch-bottom" id="ch-bottom"></div>
+            <div class="ch-line ch-left" id="ch-left"></div>
+            <div class="ch-line ch-right" id="ch-right"></div>
+        </div>
+
+        <div id="hitmarker">
+            <svg viewBox="0 0 24 24" stroke="#ffffff">
+                <line x1="4" y1="4" x2="9" y2="9"/>
+                <line x1="20" y1="4" x2="15" y2="9"/>
+                <line x1="4" y1="20" x2="9" y2="15"/>
+                <line x1="20" y1="20" x2="15" y2="15"/>
+            </svg>
+        </div>
+
+        <div id="player-score" style="position: absolute; top: 20px; right: 30px; font-size: 20px; color: #d8dee9; font-family: 'Share Tech Mono', monospace; text-shadow: 0 0 8px rgba(255,255,255,0.4);">SCORE: 0</div>
         <div id="kill-feed" style="position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; z-index: 120;"></div>
       <!-- Индикатор патронов -->
         <div id="ammo-display">
@@ -266,17 +336,15 @@
 
         <!-- 3 слота оружия с SVG-силуэтами (пистолет удален) -->
         <div id="weapon-slots">
-            <div class="slot active" id="slot-1">
+        <div class="slot active" id="slot-1">
                 <span class="slot-key">1</span>
-                <!-- Силуэт снайперской винтовки -->
+                <!-- Силуэт боевого топора -->
                 <svg viewBox="0 0 100 35">
-                    <rect x="5" y="15" width="48" height="3" />
-                    <rect x="42" y="10" width="22" height="4" />
-                    <rect x="48" y="14" width="4" height="2" />
-                    <polygon points="50,18 78,18 84,24 95,24 95,28 72,28 62,20 50,20" />
-                    <polygon points="35,18 40,26 38,26 33,18" />
+                    <rect x="12" y="16" width="66" height="4" rx="1" />
+                    <path d="M62 6 C76 5, 84 11, 86 18 C84 25, 76 31, 62 30 C66 23, 66 13, 62 6 Z" />
+                    <rect x="58" y="13" width="6" height="10" />
                 </svg>
-                <span class="slot-title">SNIPER</span>
+                <span class="slot-title">AXE</span>
             </div>
 
             <div class="slot" id="slot-2">
@@ -303,6 +371,7 @@
                 </svg>
                 <span class="slot-title">SHOTGUN</span>
             </div>
+        </div>
         </div>
 
     <script>
@@ -421,10 +490,10 @@ playerHp = 100;
 window.playerMaxArmor = 50;
 window.playerArmor = 50;
 
-function damagePlayer(amount) {
+function damagePlayer(amount, playVoice = true) {
     if (amount > 0) {
         if (typeof playPlayerHurtSound === 'function') playPlayerHurtSound();
-        if (typeof speakPlayerHurt === 'function') speakPlayerHurt();
+        if (playVoice && typeof speakPlayerHurt === 'function') speakPlayerHurt();
     }
 
     if (playerArmor > 0) {
@@ -439,10 +508,10 @@ function damagePlayer(amount) {
         playerHp -= amount;
     }
 
-    const hpEl = document.getElementById('player-hp');
-    if (hpEl) {
-        hpEl.innerText = `HP: ${Math.max(0, Math.round(playerHp))} | ARMOR: ${Math.max(0, Math.round(playerArmor))}`;
-    }
+   const hpFill = document.getElementById('hp-bar-fill');
+    const armorFill = document.getElementById('armor-bar-fill');
+    if (hpFill) hpFill.style.width = `${Math.max(0, (playerHp / playerMaxHp) * 100)}%`;
+    if (armorFill) armorFill.style.width = `${Math.max(0, (playerArmor / window.playerMaxArmor) * 100)}%`;
 
   if (playerHp <= 0) {
         triggerGameOver(); // Вызываем красивый экран смерти
@@ -636,10 +705,13 @@ function createNecromancerMob() {
     return g;
 }
 
-// 5. The Golem (Босс)
 function createGolemBoss() {
     const g = new THREE.Group();
-    g.userData = { ...MOB_TYPES.golem, archetype: 'golem', attackCooldown: 0, speed: 5.5 };
+    g.userData = {
+        ...MOB_TYPES.golem, archetype: 'golem',
+        attackCooldown: 0, speed: 7.4,
+        dashCooldown: 3.5, dashTimer: 0, dashDir: new THREE.Vector3()
+    };
     
    // Хитбокс увеличен под новые размеры
     const hitbox = new THREE.Mesh(
@@ -703,12 +775,12 @@ model.scale.set(0.1, 0.1, 0.1);
 // ==========================================
 let currentWave = 1;
 const WAVE_CONFIG = [
-    { minion: 14, necromancer: 0, rogue: 0, warrior: 0, golem: 0 },
-    { minion: 18, necromancer: 3, rogue: 0, warrior: 0, golem: 0 },
-    { minion: 15, necromancer: 4, rogue: 3, warrior: 0, golem: 0 },
-    { minion: 12, necromancer: 0, rogue: 4, warrior: 3, golem: 0 },
-    { minion: 12, necromancer: 5, rogue: 3, warrior: 0, golem: 1 },
-    { minion: 20, necromancer: 6, rogue: 0, warrior: 2, golem: 0 },
+    { minion: 13, necromancer: 0, rogue: 0, warrior: 2, golem: 0 },
+    { minion: 14, necromancer: 0, rogue: 1, warrior: 2, golem: 0 },
+    { minion: 10, necromancer: 2, rogue: 2, warrior: 4, golem: 0 },
+    { minion: 12, necromancer: 1, rogue: 2, warrior: 5, golem: 0 },
+    { minion: 12, necromancer: 2, rogue: 3, warrior: 6, golem: 1 },
+    { minion: 14, necromancer: 4, rogue: 0, warrior: 6, golem: 0 },
     { minion: 12, necromancer: 6, rogue: 6, warrior: 4, golem: 0 },
     { minion: 15, necromancer: 8, rogue: 5, warrior: 5, golem: 0 },
     { minion: 12, necromancer: 6, rogue: 6, warrior: 6, golem: 1 },
@@ -1185,17 +1257,14 @@ const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x222630, 0.012);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        // === НАПРАВЛЕННЫЙ ФОНАРИК НА КАМЕРУ ===
-      const flashlight = new THREE.SpotLight(0xffeedd, 6.5); // СВЕТ СТАЛ ЯРЧЕ (6.5)
-        flashlight.position.set(0.3, -0.2, 0.2);
-        flashlight.target.position.set(0, 0, -1);
+    // === НАПРАВЛЕННЫЙ ФОНАРИК ОТ ГЕРОЯ (НЕ СВЕТИТ В СПИНУ) ===
+        const flashlight = new THREE.SpotLight(0xffeedd, 6.5);
         flashlight.angle = Math.PI / 7;
-        flashlight.penumbra = 0.6;
-        flashlight.distance = 50; // ДАЛЬНОСТЬ УВЕЛИЧЕНА (50)
-        flashlight.decay = 1.5; // Реалистичное затухание света
-        
-        camera.add(flashlight);
-        camera.add(flashlight.target);
+        flashlight.penumbra = 0.65;
+        flashlight.distance = 52;
+        flashlight.decay = 1.5;
+        scene.add(flashlight);
+        scene.add(flashlight.target);
         
         // === ВСПЫШКА ВЫСТРЕЛА (MUZZLE FLASH) ===
         const muzzleFlashLight = new THREE.PointLight(0xff6600, 0, 18, 1.5);
@@ -1245,9 +1314,36 @@ if (typeof walkableMeshes === 'undefined') window.walkableMeshes = [];
             }
         });
 
-        // Слабый холодный лунный свет (0.045 вместо 0.01), чтобы читались деревья и дома
-        const ambientLight = new THREE.AmbientLight(0x182030, 0.045);
+    // Лёгкий ночной свет от звёзд (темно, но без полной черноты)
+        const ambientLight = new THREE.AmbientLight(0x1c2638, 0.075);
         scene.add(ambientLight);
+
+        // Редкие ненавязчивые звёзды
+        (function createStarrySky() {
+            const starCount = 170;
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+            for (let i = 0; i < starCount; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI * 0.40;
+                const r = 220 + Math.random() * 40;
+                positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = r * Math.cos(phi) + 18;
+                positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+                const bright = 0.35 + Math.random() * 0.4;
+                colors[i * 3]     = bright * 0.9;
+                colors[i * 3 + 1] = bright * 0.92;
+                colors[i * 3 + 2] = bright;
+            }
+            const starGeo = new THREE.BufferGeometry();
+            starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const starMat = new THREE.PointsMaterial({
+                size: 1.0, vertexColors: true, transparent: true, opacity: 0.55, fog: false, sizeAttenuation: true
+            });
+            scene.add(new THREE.Points(starGeo, starMat));
+        })();
 
         // Главная функция создания блоков (остается на месте!)
         function createBlock(w, h, d, x, y, z, mat, isWalkable = true, isCollider = true) {
@@ -1267,8 +1363,10 @@ if (typeof walkableMeshes === 'undefined') window.walkableMeshes = [];
         const roofMat = new THREE.MeshStandardMaterial({ color: 0x1f1610, roughness: 0.9 });
         const furnitureMat = new THREE.MeshStandardMaterial({ color: 0x5c3e26, roughness: 0.8 });
         const bedMat = new THREE.MeshStandardMaterial({ color: 0x6e2b2b, roughness: 0.9 });
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.9 });
-        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x4a4e54, roughness: 0.85 });
+     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.95, flatShading: true });
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.92, flatShading: true });
+        const leavesMatMid = new THREE.MeshStandardMaterial({ color: 0x242830, roughness: 0.9, flatShading: true });
+        const leavesMatTop = new THREE.MeshStandardMaterial({ color: 0x2d323c, roughness: 0.88, flatShading: true });
         const stoneMat = new THREE.MeshStandardMaterial({ color: 0x33363d, roughness: 0.9 });
 
         // --- 3. ЗЕМЛЯ (ПОЛ КАРТЫ 120x120) ---
@@ -1280,26 +1378,50 @@ if (typeof walkableMeshes === 'undefined') window.walkableMeshes = [];
         walkableMeshes.push(ground);
 
         // --- 4. ФУНКЦИЯ ДЕРЕВЬЕВ + НЕВИДИМЫЕ СТЕНЫ И ЧАЩА ПО КРАЯМ ---
-        function createTree(tx, tz, scale = 1) {
-            const trunkH = 5 * scale;
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4 * scale, 0.6 * scale, trunkH, 8), trunkMat);
-            trunk.position.set(tx, trunkH / 2, tz);
+      function createTree(tx, tz, scale = 1) {
+            const treeGroup = new THREE.Group();
+            treeGroup.position.set(tx, 0, tz);
+            treeGroup.rotation.y = (tx * 1.3 + tz * 0.7) % (Math.PI * 2);
+
+            const trunkH = 5.2 * scale;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.26 * scale, 0.58 * scale, trunkH, 6), trunkMat);
+            trunk.position.y = trunkH / 2;
             trunk.castShadow = true;
             trunk.receiveShadow = true;
-            scene.add(trunk);
-            colliders.push(trunk);
+            treeGroup.add(trunk);
 
-            const foliage1 = new THREE.Mesh(new THREE.ConeGeometry(2.8 * scale, 4.5 * scale, 7), leavesMat);
-            foliage1.position.set(tx, trunkH + 1 * scale, tz);
-            foliage1.castShadow = true;
-            foliage1.receiveShadow = true;
-            scene.add(foliage1);
+            // Утолщение у корней
+            const roots = new THREE.Mesh(new THREE.ConeGeometry(0.95 * scale, 1.1 * scale, 5), trunkMat);
+            roots.position.y = 0.5 * scale;
+            treeGroup.add(roots);
 
-            const foliage2 = new THREE.Mesh(new THREE.ConeGeometry(2.1 * scale, 3.8 * scale, 7), leavesMat);
-            foliage2.position.set(tx, trunkH + 3.2 * scale, tz);
-            foliage2.castShadow = true;
-            foliage2.receiveShadow = true;
-            scene.add(foliage2);
+          // Лёгкий естественный наклон ствола (готический лес)
+            treeGroup.rotation.z = Math.sin(tx * 2.1 + tz) * 0.045;
+            treeGroup.rotation.x = Math.cos(tz * 1.7 + tx) * 0.045;
+
+            // 4 узких готических яруса с перехлёстом и разным поворотом граней
+            const tiers = [
+                { r: 2.4, h: 3.4, y: trunkH - 1.2, mat: leavesMat,    rot: 0.1 },
+                { r: 1.95, h: 3.2, y: trunkH + 0.5, mat: leavesMatMid, rot: 0.85 },
+                { r: 1.45, h: 3.0, y: trunkH + 2.1, mat: leavesMat,    rot: 1.6 },
+                { r: 0.9,  h: 2.8, y: trunkH + 3.6, mat: leavesMatTop, rot: 2.35 }
+            ];
+            tiers.forEach(t => {
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(t.r * scale, t.h * scale, 6), t.mat);
+                cone.position.y = t.y * scale;
+                cone.rotation.y = t.rot;
+                cone.castShadow = true;
+                cone.receiveShadow = true;
+                treeGroup.add(cone);
+            });
+
+            scene.add(treeGroup);
+
+            // Невидимый коллайдер ровно по стволу
+            const colMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * scale, 0.55 * scale, trunkH, 6), invisibleMat);
+            colMesh.position.set(tx, trunkH / 2, tz);
+            scene.add(colMesh);
+            colliders.push(colMesh);
         }
 
         const borderDist = 48;
@@ -1385,13 +1507,14 @@ if (typeof walkableMeshes === 'undefined') window.walkableMeshes = [];
             });
         }
 
-        const fireLight = new THREE.PointLight(0xff6611, 3.0, 26, 1.7);
+      const fireLight = new THREE.PointLight(0xff6611, 3.0, 26, 1.7);
         fireLight.position.set(fireX, 2.4, fireZ);
         fireLight.castShadow = true;
         fireLight.shadow.mapSize.width = 1024;
         fireLight.shadow.mapSize.height = 1024;
+        fireLight.shadow.bias = -0.002;
+        fireLight.shadow.normalBias = 0.045;
         scene.add(fireLight);
-
         const playerAuraLight = new THREE.PointLight(0x445577, 0.55, 7.5, 2.0);
         scene.add(playerAuraLight);
         // =========================================================================
@@ -1493,13 +1616,13 @@ function createFourBarricades(targetX, targetZ) {
             barGroup.add(diag);
         });
 
-     barGroup.userData = {
+    barGroup.userData = {
             id: def.id,
             index: index,
             isBarricade: true,
-            hp: 750,       // УВЕЛИЧЕНО
-            maxHp: 750,    // УВЕЛИЧЕНО
-            posts: postsPositions, // точки бревен для расчета коллизий
+       hp: 1260,      // Ещё +20% к прочности
+            maxHp: 1260,
+            posts: postsPositions,
             radius: radius,
             startAngle: def.startAngle,
             endAngle: def.endAngle
@@ -1513,6 +1636,150 @@ function createFourBarricades(targetX, targetZ) {
 // Запуск сразу после костра:
 createFourBarricades(fireX, fireZ);
 
+// --- СТАТИЧНАЯ ПАЛАТКА (МЕЖДУ КОСТРОМ И СЕВЕРНЫМ ПРОХОДОМ, ЗАСЛОНЯЕТ ПРОХОД) ---
+const tentBounds = { minX: fireX - 3.3, maxX: fireX + 3.3, minZ: fireZ - 8.4, maxZ: fireZ - 5.2 };
+
+
+   (function createCampTent() {
+    const tent = new THREE.Group();
+    const tx = fireX;
+    const tz = fireZ - 6.8;
+    tent.position.set(tx, 0, tz);
+
+    const flyMat   = new THREE.MeshStandardMaterial({ color: 0x4f545c, roughness: 0.9, side: THREE.DoubleSide });
+    const wallMat  = new THREE.MeshStandardMaterial({ color: 0x3b3f47, roughness: 0.94, side: THREE.DoubleSide });
+    const innerMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 1.0, side: THREE.BackSide });
+    const ropeMat  = new THREE.MeshStandardMaterial({ color: 0x25282e, roughness: 0.9 });
+    const stakeMat = new THREE.MeshStandardMaterial({ color: 0x676e7a, roughness: 0.65, metalness: 0.4 });
+
+    const halfW = 1.88;     // Половина ширины стен (3.76 м)
+    const halfL = 2.05;     // Половина длины стен (4.10 м)
+    const wallH = 1.48;     // Высота боковой стены ровно под скатом крыши
+    const apexH = 2.68;     // Высота конька на фронтонах
+    const eaveX = 3.10;     // Вылет навеса по бокам
+    const eaveY = 0.75;     // Высота края навеса
+    const roofHalfL = 2.35; // Вылет навеса спереди и сзади
+
+    // 1. ВЕРХНИЙ ТЕНТ-НАВЕС (2 гладких ската с плавным прогибом конька по центру)
+    function makeRoofSlope(side) {
+        const geo = new THREE.PlaneGeometry(1, 1, 14, 10);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const u = pos.getX(i) * 2;          // -1..+1 вдоль длины (Z)
+            const v = pos.getY(i) + 0.5;        // 0 (конёк) .. 1 (край навеса)
+            const z = u * roofHalfL;
+            const x = side * v * eaveX;
+            const ridgeSag = (1 - u * u) * 0.24; // Провисание конька в центре
+            const slopeSag = Math.sin(v * Math.PI) * 0.08; // Лёгкий прогиб полотна ската
+            const y = THREE.MathUtils.lerp(apexH + 0.06 - ridgeSag, eaveY, v) - slopeSag;
+            pos.setXYZ(i, x, y, z);
+        }
+        geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, flyMat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+    }
+    tent.add(makeRoofSlope(-1));
+    tent.add(makeRoofSlope(1));
+
+    // 2. БОКОВЫЕ СТЕНЫ (ровно стыкуются с навесом, мягкие складки книзу)
+    [-1, 1].forEach(side => {
+        const geo = new THREE.PlaneGeometry(halfL * 2, wallH, 12, 5);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const lx = pos.getX(i);
+            const ly = pos.getY(i);
+            const bottomFactor = (wallH / 2 - ly) / wallH; // 0 сверху, 1 у земли
+            const ripple = Math.sin(lx * 3.2 + side) * 0.07 * bottomFactor;
+            pos.setZ(i, ripple);
+        }
+        geo.computeVertexNormals();
+        const wall = new THREE.Mesh(geo, wallMat);
+        wall.position.set(side * halfW, wallH / 2, 0);
+        wall.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        tent.add(wall);
+    });
+
+    // 3. ЗАДНЯЯ СТЕНА (идеальный пятиугольник точно по форме крыши — 0 щелей)
+    const backShape = new THREE.Shape();
+    backShape.moveTo(-halfW, 0);
+    backShape.lineTo( halfW, 0);
+    backShape.lineTo( halfW, wallH);
+    backShape.lineTo( 0, apexH);
+    backShape.lineTo(-halfW, wallH);
+    backShape.closePath();
+
+    const backWall = new THREE.Mesh(new THREE.ShapeGeometry(backShape), wallMat);
+    backWall.position.set(0, 0, -halfL);
+    backWall.castShadow = true;
+    backWall.receiveShadow = true;
+    tent.add(backWall);
+
+    // 4. ПЕРЕДНИЙ ВХОД (две шторки с аккуратным треугольным разрезом по центру)
+    [-1, 1].forEach(side => {
+        const s = new THREE.Shape();
+        if (side < 0) {
+            s.moveTo(-halfW, 0);
+            s.lineTo(-0.48, 0);       // край левой шторки у земли
+            s.lineTo(-0.04, apexH - 0.08); // вершина разреза под коньком
+            s.lineTo(-halfW, wallH);
+        } else {
+            s.moveTo( 0.48, 0);       // край правой шторки у земли
+            s.lineTo( halfW, 0);
+            s.lineTo( halfW, wallH);
+            s.lineTo( 0.04, apexH - 0.08);
+        }
+        s.closePath();
+
+        const flap = new THREE.Mesh(new THREE.ShapeGeometry(s), wallMat);
+        flap.position.set(0, 0, halfL);
+        flap.castShadow = true;
+        flap.receiveShadow = true;
+        tent.add(flap);
+    });
+
+    // 5. Тёмный пол внутри палатки (чтобы в проёме входа была естественная тень)
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(halfW * 2, halfL * 2), new THREE.MeshStandardMaterial({ color: 0x0c0d10, roughness: 1.0 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.02;
+    tent.add(floor);
+
+    // 6. 4 РАСТЯЖКИ + КОЛЫШКИ (выходят точно из 4 углов навеса)
+    [
+        [-eaveX,  roofHalfL, -eaveX - 0.95,  roofHalfL + 0.45],
+        [ eaveX,  roofHalfL,  eaveX + 0.95,  roofHalfL + 0.45],
+        [-eaveX, -roofHalfL, -eaveX - 0.95, -roofHalfL - 0.45],
+        [ eaveX, -roofHalfL,  eaveX + 0.95, -roofHalfL - 0.45]
+    ].forEach(([sx, sz, ex, ez]) => {
+        const start = new THREE.Vector3(sx, eaveY, sz);
+        const end = new THREE.Vector3(ex, 0.14, ez);
+        const dist = start.distanceTo(end);
+
+        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, dist, 4), ropeMat);
+        rope.position.copy(start).add(end).multiplyScalar(0.5);
+        rope.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+        tent.add(rope);
+
+        const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.015, 0.30, 5), stakeMat);
+        stake.position.set(ex, 0.13, ez);
+        stake.rotation.z = ex > 0 ? -0.25 : 0.25;
+        tent.add(stake);
+
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.04, 0.06), stakeMat);
+        cap.position.set(ex + (ex > 0 ? 0.03 : -0.03), 0.27, ez);
+        tent.add(cap);
+    });
+
+    scene.add(tent);
+// Высокий коллайдер (нельзя перепрыгнуть или залезть на крышу)
+    const tentCol = new THREE.Mesh(new THREE.BoxGeometry(6.4, 12.0, 4.4), invisibleMat);
+    tentCol.position.set(tx, 6.0, tz);
+    scene.add(tentCol);
+    colliders.push(tentCol);
+})();
 
         // --- СОЗДАНИЕ ПОЛНОЙ ЛУНЫ НА НЕБЕ (ДЛЯ 5, 10, 15... ВОЛНЫ) ---
         // fog: false гарантирует, что Луна ярко светится в небе даже сквозь туман
@@ -1531,19 +1798,22 @@ createFourBarricades(fireX, fireZ);
         fullMoonLight.position.set(-35, 55, -65);
         scene.add(fullMoonLight);
 
-        const FIRE_STAGES = {
-            1: { intensity: 0.9, distance: 12, fog: 0.068, scale: 0.35, color: 0xff3300, name: "DYING EMBERS" },
-            2: { intensity: 2.8, distance: 25, fog: 0.045, scale: 1.0,  color: 0xff6611, name: "STEADY FIRE" },
-            3: { intensity: 4.8, distance: 40, fog: 0.028, scale: 1.6,  color: 0xff9933, name: "ROARING FLAME" }
+      const FIRE_STAGES = {
+            1: { intensity: 1.5, distance: 18, safeRadius: 9,  fog: 0.062, scale: 0.4, color: 0xff3300, name: "DYING EMBERS" },
+            2: { intensity: 4.0, distance: 35, safeRadius: 17, fog: 0.040, scale: 1.05, color: 0xff6611, name: "STEADY FIRE" },
+            3: { intensity: 6.4, distance: 52, safeRadius: 24, fog: 0.025, scale: 1.65, color: 0xff9933, name: "ROARING FLAME" }
         };
 
-        let fireFuel = 85;
+      let fireFuel = 85;
         const maxFuel = 100;
-        const fuelDecayRate = 1.35;
+        const fuelDecayRate = 0.77; // Было 1.35 -> 1.35 / 1.75 = 0.77 (+75% к длительности каждой стадии)
+        let moonProgress = 0;       // Плавный прогресс восхода луны (0..1)
         let woodInventory = 0;
         const maxWoodCarry = 3;
         let currentFireStage = 3;
         let lastFireTime = performance.now() * 0.001;
+        let darknessTimer = 0;
+        let isInDarkness = false;
 
         const fireHud = document.createElement('div');
         fireHud.style.cssText = 'display:none; position:fixed; top:16px; left:50%; transform:translateX(-50%); background:rgba(5,5,8,0.88); color:#ffb366; padding:8px 18px; border-radius:8px; font-family:monospace; font-size:15px; border:1px solid #ff6611; z-index:100; pointer-events:none; text-align:center; box-shadow: 0 0 12px rgba(255,102,17,0.3); transition: all 0.4s ease;';
@@ -1580,8 +1850,10 @@ createFourBarricades(fireX, fireZ);
             } else {
                 fireHud.style.borderColor = '#ff6611';
                 fireHud.style.color = '#ffb366';
-                const stageName = FIRE_STAGES[currentFireStage].name;
-                fireHud.innerHTML = `🔥 FIRE: <b>${Math.ceil(fireFuel)}%</b> (${stageName}) &nbsp;|&nbsp; 🪵 WOOD: <b>${woodInventory}/${maxWoodCarry}</b>`;
+             const stageName = FIRE_STAGES[currentFireStage].name;
+                const darkWarn = isInDarkness ? ` &nbsp;|&nbsp; <b style="color:#ff3333">🌑 DARKNESS! RETURN TO FIRE</b>` : '';
+                fireHud.style.borderColor = isInDarkness ? '#ff2222' : '#ff6611';
+                fireHud.innerHTML = `🔥 FIRE: <b>${Math.ceil(fireFuel)}%</b> (${stageName}) &nbsp;|&nbsp; 🪵 WOOD: <b>${woodInventory}/${maxWoodCarry}</b>${darkWarn}`;
             }
         }
 
@@ -1662,8 +1934,8 @@ createFourBarricades(fireX, fireZ);
 
             const active = isGameplayActive();
             const waveNum = getDetectedWave();
-            // Каждая 5-я волна (5, 10, 15, 20...) включает Полную Луну!
-            const isMoonWave = waveNum > 0 && (waveNum % 5 === 0);
+         // Полная Луна с плавным восходом и заходом на 5, 7 и 10 волнах
+            const isMoonWave = (waveNum === 3 || waveNum === 5 || waveNum === 7 || (waveNum > 0 && waveNum % 5 === 0));
 
             // 1. В лунную волну костер НЕ тратит топливо (передышка для игрока)
             if (active && !isMoonWave && fireFuel > 0) {
@@ -1681,19 +1953,51 @@ createFourBarricades(fireX, fireZ);
             const cfg = FIRE_STAGES[currentFireStage];
             fireLight.color.setHex(cfg.color);
 
-            // 2. Плавный восход/закат Луны и переключение освещения карты
-            const targetMoonY = isMoonWave ? 48 : -25; // На 5-й волне луна поднимается высоко в небо
-            moonMesh.position.y += (targetMoonY - moonMesh.position.y) * 0.03;
+           // 2. Медленный, плавный восход/закат Луны (примерно за 8 секунд по дуге)
+            const moonTarget = isMoonWave ? 1 : 0;
+            const moonStep = dt * 0.12;
+            if (moonProgress < moonTarget) moonProgress = Math.min(1, moonProgress + moonStep);
+            else if (moonProgress > moonTarget) moonProgress = Math.max(0, moonProgress - moonStep);
 
-            const targetMoonIntensity = isMoonWave ? 1.35 : 0.0;
-            fullMoonLight.intensity += (targetMoonIntensity - fullMoonLight.intensity) * 0.04;
+            // Smoothstep-кривая для максимально мягкого старта и остановки
+            const smoothMoon = moonProgress * moonProgress * (3 - 2 * moonProgress);
 
-            const targetAmbient = isMoonWave ? 0.55 : 0.045;
-            ambientLight.intensity += (targetAmbient - ambientLight.intensity) * 0.04;
+            moonMesh.position.y = THREE.MathUtils.lerp(-22, 48, smoothMoon);
+            moonMesh.position.x = THREE.MathUtils.lerp(-50, -28, smoothMoon);
+            moonGlowMat.opacity = 0.05 + smoothMoon * 0.25;
+            fullMoonLight.intensity = smoothMoon * 1.35;
 
-            const targetFog = isMoonWave ? 0.012 : cfg.fog; // При луне туман рассеивается, видно всю карту
+            const targetAmbient = THREE.MathUtils.lerp(0.075, 0.52, smoothMoon);
+            ambientLight.intensity += (targetAmbient - ambientLight.intensity) * Math.min(1, dt * 3);
+
+            const targetFog = THREE.MathUtils.lerp(cfg.fog, 0.012, smoothMoon);
             if (scene.fog) {
-                scene.fog.density += (targetFog - scene.fog.density) * 0.04;
+                scene.fog.density += (targetFog - scene.fog.density) * Math.min(1, dt * 3);
+            }
+
+            // 3. Урон от темноты: раз в 5 сек (1-3 волна: 1, с 4-й: 2, с 7-й: 3; глубже в лес: +1; на 5 и 10 нет)
+            if (active && playerPos && !isMoonWave) {
+                const distToFire = Math.hypot(playerPos.x - fireX, playerPos.z - fireZ);
+                const safeR = fireFuel <= 0 ? 0 : cfg.safeRadius;
+                if (distToFire > safeR) {
+                    isInDarkness = true;
+                    darknessTimer += dt;
+                    if (darknessTimer >= 5.0) {
+                        darknessTimer = 0;
+                        let darkDmg = waveNum >= 7 ? 3 : (waveNum >= 4 ? 2 : 1);
+                        // Чем глубже в лес ушёл герой — тем сильнее бьёт темнота
+                        const extraDepth = Math.floor(Math.max(0, distToFire - safeR) / 14);
+                        darkDmg += extraDepth;
+                      damagePlayer(darkDmg, false); // Без записанного голоса боли
+                        showKillBanner(`🌑 DARKNESS -${darkDmg}`, 'head');
+                    }
+                } else {
+                    isInDarkness = false;
+                    darknessTimer = 0;
+                }
+            } else {
+                isInDarkness = false;
+                darknessTimer = 0;
             }
 
             fireGroup.scale.lerp(new THREE.Vector3(cfg.scale, cfg.scale, cfg.scale), 0.06);
@@ -1825,11 +2129,9 @@ createFourBarricades(fireX, fireZ);
                 case 'golem': mob.scale.set(1.7, 1.7, 1.7); break;
             }
 
-          mob.traverse(node => {
-                if (node.isMesh) {
-                    node.visible = false; // Полностью выключаем старые меши, чтобы пули сквозь них не застревали
-                }
-            });
+       while (mob.children.length > 0) {
+                mob.remove(mob.children[0]);
+            }
             
 
            const isGolem = (archetype === 'golem');
@@ -1849,9 +2151,17 @@ createFourBarricades(fireX, fireZ);
             pelvis.position.y = 0.92;
             rig.add(pelvis);
 
+          const hbMat = new THREE.MeshBasicMaterial({ visible: false });
+
             const torso = new THREE.Group();
             torso.position.y = 1.0;
             rig.add(torso);
+
+            // Сплошной хитбокс торса (пули больше не пролетают между рёбрами)
+            const torsoHB = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.85, 0.44), hbMat);
+            torsoHB.position.set(0, 0.44, 0);
+            torsoHB.userData.isHitbox = true;
+            torso.add(torsoHB);
 
             for (let s = 0; s < 4; s++) {
                 const vert = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), subBone);
@@ -1864,21 +2174,39 @@ createFourBarricades(fireX, fireZ);
                 torso.add(rib);
             }
 
-           const soulCore = new THREE.Mesh(new THREE.OctahedronGeometry(isGolem ? 0.22 : 0.14, 0), eyeMat);
+            const soulCore = new THREE.Mesh(new THREE.OctahedronGeometry(isGolem ? 0.22 : 0.14, 0), eyeMat);
             soulCore.position.set(0, 0.52, 0.04);
-            soulCore.userData.isCore = true; // <--- ДОБАВЛЕН ХИТБОКС СЕРДЦА
+            soulCore.userData.isCore = true;
             torso.add(soulCore);
+
+            // Увеличенный хитбокс сердца
+            const coreHB = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 6), hbMat);
+            coreHB.position.set(0, 0.52, 0.04);
+            coreHB.userData.isHitbox = true;
+            coreHB.userData.isCore = true;
+            torso.add(coreHB);
+
+         mob.userData.armorMeshes = [];
+            mob.userData.hasArmor = (archetype === 'shield' || archetype === 'warrior');
+            mob.userData.armorHp = mob.userData.hasArmor ? 150 : 0; // 5 пуль винтовки (5*32=160) или 1-2 дробовика
 
             if (isGolem || archetype === 'shield') {
                 const plate = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.5, 0.4), skelMats.ironArmor);
                 plate.position.set(0, 0.56, 0.03);
                 torso.add(plate);
+                if (mob.userData.hasArmor) mob.userData.armorMeshes.push(plate);
             }
-
-         const headGroup = new THREE.Group();
+            const headGroup = new THREE.Group();
             headGroup.position.set(0, 0.88, 0.02);
-            headGroup.userData.isHead = true; // Маркер головы (распространится на все шлемы и рога)
+            headGroup.userData.isHead = true;
             torso.add(headGroup);
+
+            // Надёжный хитбокс головы
+            const headHB = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.5, 0.52), hbMat);
+            headHB.position.set(0, 0.24, 0);
+            headHB.userData.isHitbox = true;
+            headHB.userData.isHead = true;
+            headGroup.add(headHB);
 
             const cranium = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.42), mainBone);
             cranium.position.set(0, 0.26, 0);
@@ -1894,26 +2222,25 @@ createFourBarricades(fireX, fireZ);
                 headGroup.add(e1);
             });
 
-            // === РАНДОМНАЯ БРОНЯ ДЛЯ ОБЫЧНЫХ МИНЬОНОВ ===
+         // === ЖЕЛЕЗНЫЙ ШЛЕМ ДЛЯ ОБЫЧНЫХ МИНЬОНОВ (СЛЕТАЕТ ОТ 1 ХЕДШОТА) ===
             if (archetype === 'minion') {
                 const randArmor = Math.random();
                 if (randArmor > 0.4) {
-                    // Ржавый железный шлем
-                    const ironHat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.46), skelMats.rustMetal);
-                    ironHat.position.set(0, 0.46, 0);
-                    headGroup.add(ironHat);
-                    
+                    const helmetGroup = new THREE.Group();
+                    const ironHat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.22, 0.48), skelMats.ironArmor);
+                    const steelRim = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.50), skelMats.steel);
+                    steelRim.position.y = -0.09;
+                    helmetGroup.add(ironHat, steelRim);
+                    helmetGroup.position.set(0, 0.44, 0);
+                    headGroup.add(helmetGroup);
+
+                    mob.userData.hasHelmet = true;
+                    mob.userData.minionHelmet = helmetGroup;
+
                     if (randArmor > 0.65) {
-                        // Асимметричный ржавый наплечник
-                        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.28), skelMats.rustMetal);
+                        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.28), skelMats.ironArmor);
                         pad.position.set(0.25, 0.78, 0);
                         torso.add(pad);
-                    }
-                    if (randArmor > 0.8) {
-                        // Стальная челюсть / маска на лицо
-                        const jawArmor = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.35), skelMats.ironArmor);
-                        jawArmor.position.set(0, 0.05, 0.03);
-                        headGroup.add(jawArmor);
                     }
                 }
             }
@@ -1956,21 +2283,21 @@ createFourBarricades(fireX, fireZ);
 
                
 
-            // === 2. ВИЗУАЛ ДЛЯ ВОИНА (ТАНК SHIELD) ===
+          // === 2. ВИЗУАЛ ДЛЯ ВОИНА (ТАНК SHIELD) ===
             if (archetype === 'shield' || archetype === 'warrior') {
-                // Тяжелые стальные наплечники
                 [-0.52, 0.52].forEach(sx => {
                     const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.28, 0.35), skelMats.ironArmor);
                     pauldron.position.set(sx, 0.78, 0);
                     torso.add(pauldron);
+                    mob.userData.armorMeshes.push(pauldron);
                 });
 
-                // Глухой рыцарский шлем с гребнем
                 const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.4, 0.48), skelMats.ironArmor);
                 helmet.position.set(0, 0.28, 0);
                 const crest = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.52), skelMats.gold);
                 crest.position.set(0, 0.52, 0);
                 headGroup.add(helmet, crest);
+                mob.userData.armorMeshes.push(helmet, crest);
             }
 
             // === 3. ВИЗУАЛ ДЛЯ ЛУЧНИКА (ROGUE / CROSSBOW): ГОРЯЩИЙ ОХОТНИК ===
@@ -2186,10 +2513,11 @@ createFourBarricades(fireX, fireZ);
                     }
                 }
                 
-                if (!isRight && (archetype === 'shield' || isGolem)) {
+              if (!isRight && (archetype === 'shield' || isGolem)) {
                     const shield = new THREE.Mesh(new THREE.BoxGeometry(0.1, archetype === 'shield' ? 1.2 : 0.9, 0.7), skelMats.ironArmor);
                     shield.position.set(-0.1, -0.2, 0.2);
                     elbow.add(shield);
+                    if (mob.userData.hasArmor) mob.userData.armorMeshes.push(shield);
                 }
 
                 torso.add(shoulder);
@@ -2253,11 +2581,29 @@ createFourBarricades(fireX, fireZ);
         }
        
             // Проверка столкновения моба с баррикадой (дуговой сектор + колья)
-        function checkMobBarricadeCollision(mob, delta = 0.016) {
+      function checkMobBarricadeCollision(mob, delta = 0.016) {
             if (!mob || typeof barricades === 'undefined' || barricades.length === 0) return false;
 
             const mobX = mob.position.x;
             const mobZ = mob.position.z;
+
+            // Статичная палатка: выталкиваем мобов наружу, чтобы не проходили сквозь неё
+            if (typeof tentBounds !== 'undefined') {
+                const pad = 0.65;
+                if (mobX > tentBounds.minX - pad && mobX < tentBounds.maxX + pad &&
+                    mobZ > tentBounds.minZ - pad && mobZ < tentBounds.maxZ + pad) {
+                    const dl = Math.abs(mobX - (tentBounds.minX - pad));
+                    const dr = Math.abs((tentBounds.maxX + pad) - mobX);
+                    const dt = Math.abs(mobZ - (tentBounds.minZ - pad));
+                    const db = Math.abs((tentBounds.maxZ + pad) - mobZ);
+                    const m = Math.min(dl, dr, dt, db);
+                    if (m === dl) mob.position.x = tentBounds.minX - pad;
+                    else if (m === dr) mob.position.x = tentBounds.maxX + pad;
+                    else if (m === dt) mob.position.z = tentBounds.minZ - pad;
+                    else mob.position.z = tentBounds.maxZ + pad;
+                    return false;
+                }
+            }
             const mobRadius = 0.65;
             const postRadius = 0.45;
             const hitDistSq = (mobRadius + postRadius) * (mobRadius + postRadius);
@@ -2367,54 +2713,76 @@ createFourBarricades(fireX, fireZ);
                 const p = mob.userData.skelParts;
                 if (!p) return;
 
-          // === НОВЫЙ ИНТЕЛЛЕКТ БОССА (С РАЗНЫМИ АТАКАМИ И СБЛИЖЕНИЕМ) ===
+       // === УСИЛЕННЫЙ ИНТЕЛЛЕКТ БОССА (БЫСТРЫЙ БЕГ + РЫВОК) ===
                 if (p.isGolem || mob.userData.archetype === 'golem') {
-                    if (mob.userData.mixer) mob.userData.mixer.update(0.016);
+                    const dtBoss = 0.016;
+                    if (mob.userData.mixer) mob.userData.mixer.update(dtBoss);
                     if (mob.userData.hp <= 0) return;
 
                     let dist = 999;
                     if (pPos) dist = Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z);
-                    const isBlocked = checkMobBarricadeCollision(mob, 0.016);
+                    const isBlocked = checkMobBarricadeCollision(mob, dtBoss);
 
-                    mob.userData.attackCooldown = (mob.userData.attackCooldown || 0) - 0.016;
+                    mob.userData.attackCooldown = (mob.userData.attackCooldown || 0) - dtBoss;
+                    mob.userData.dashCooldown   = (mob.userData.dashCooldown   || 0) - dtBoss;
+
+                    // Активный рывок босса
+                    if (mob.userData.dashTimer > 0) {
+                        mob.userData.dashTimer -= dtBoss;
+                        if (mob.userData.mixer) mob.userData.mixer.timeScale = 1.7;
+                        if (!isBlocked) {
+                            mob.position.addScaledVector(mob.userData.dashDir, 18.5 * dtBoss);
+                        }
+                        if (mob.userData.dashTimer <= 0 || dist < 2.4 || isBlocked) {
+                            mob.userData.dashTimer = 0;
+                            if (mob.userData.mixer) mob.userData.mixer.timeScale = 1.0;
+                        }
+                        return;
+                    }
 
                     if (mob.userData.attackCooldown > 0) return;
 
-                    // 1. ИГРОК ДАЛЕКО -> БОСС ДОЛЖЕН БЕЖАТЬ ВПЛОТНУЮ (Уменьшили дистанцию начала атаки с 6.0 до 3.0 метров)
-                    if (dist > 3.0 && !isBlocked) {
+                    // Старт рывка, если игрок на средней/дальней дистанции (6.5–24 м)
+                    if (dist > 6.5 && dist < 24 && !isBlocked && mob.userData.dashCooldown <= 0 && pPos) {
+                        mob.userData.dashDir.set(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
+                        mob.userData.dashTimer = 0.48;
+                        mob.userData.dashCooldown = 4.8 + Math.random() * 1.5;
+                        crossFadeAnim(mob, 'run', 0.1);
+                        if (typeof playSkeletonGrowlSound === 'function') playSkeletonGrowlSound(mob.position);
+                        showKillBanner("⚡ TITAN CHARGES!", 'core');
+                        return;
+                    }
+
+                    // 1. Быстрый бег к игроку
+                    if (dist > 3.2 && !isBlocked && pPos) {
                         crossFadeAnim(mob, 'run');
                         const dir = new THREE.Vector3(pPos.x - mob.position.x, 0, pPos.z - mob.position.z).normalize();
-                        mob.position.addScaledVector(dir, (mob.userData.speed || 5.5) * 0.016);
-                    } 
-                    // 2. СРЕДНЯЯ ДИСТАНЦИЯ -> УДАР С РАЗМАХУ (Без телепортации!)
-                    else if (dist >= 1.8 && dist <= 3.0 && !isBlocked) {
-                        mob.userData.attackCooldown = 2.5; 
-                        crossFadeAnim(mob, 'kick');
-                        
-                        // Убрали телепорт (addScaledVector). 
-                        // Теперь урон проходит только если игрок не успел отбежать (радиус поражения снижен до 2.8)
-                        setTimeout(() => {
-                            if (mob && mob.userData.hp > 0) {
-                                let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
-                                if (hitDist < 2.8) damagePlayer(40); // Сбалансированный урон
-                            }
-                        }, 700);
-
-                    } 
-                    // 3. ИГРОК ВПЛОТНУЮ ИЛИ БОСС УПЕРСЯ В ЗАБОР -> БЫСТРЫЙ УДАР
-                    else {
-                        mob.userData.attackCooldown = 1.8;
-                        crossFadeAnim(mob, 'punch');
-                        
-                        setTimeout(() => {
-                            if (mob && mob.userData.hp > 0) {
-                                let hitDist = pPos ? Math.hypot(pPos.x - mob.position.x, pPos.z - mob.position.z) : 999;
-                                if (hitDist < 2.5 || isBlocked) damagePlayer(25);
-                            }
-                        }, 500);
+                        mob.position.addScaledVector(dir, (mob.userData.speed || 7.4) * dtBoss);
                     }
-                    
-                    return; // ВАЖНО: Прерываем функцию, чтобы босс не обрабатывался как обычный скелет!
+                    // 2. Мощный удар на средней дистанции
+                    else if (dist >= 1.9 && dist <= 3.2 && !isBlocked) {
+                        mob.userData.attackCooldown = 2.1;
+                        crossFadeAnim(mob, 'kick');
+                        setTimeout(() => {
+                            if (mob && mob.userData.hp > 0) {
+                                const hitDist = playerGroup ? Math.hypot(playerGroup.position.x - mob.position.x, playerGroup.position.z - mob.position.z) : 999;
+                                if (hitDist < 3.0) damagePlayer(42);
+                            }
+                        }, 650);
+                    }
+                    // 3. Быстрый удар вплотную или по забору
+                    else {
+                        mob.userData.attackCooldown = 1.55;
+                        crossFadeAnim(mob, 'punch');
+                        setTimeout(() => {
+                            if (mob && mob.userData.hp > 0) {
+                                const hitDist = playerGroup ? Math.hypot(playerGroup.position.x - mob.position.x, playerGroup.position.z - mob.position.z) : 999;
+                                if (hitDist < 2.7 || isBlocked) damagePlayer(28);
+                            }
+                        }, 460);
+                    }
+
+                    return;
                 }
 
               // === СТАВИМ ЭТОТ БЛОК СЮДА ===
@@ -2884,84 +3252,105 @@ function spawnLegsExplosion(mob) {
 
     showKillBanner("🦵 LEG SHOT!", 'body');
 }
-// === ВОКСЕЛЬНЫЙ ГЕРОЙ (ВИД СО СПИНЫ, СМОТРИТ ВПЕРЕД) ===
+// === ВОКСЕЛЬНЫЙ ГЕРОЙ (СТИЛЬ КАК НА КАРТИНКЕ, ПРИГЛУШЁННЫЕ ГОТИЧЕСКИЕ ЦВЕТА) ===
     function createVoxelHero() {
         const hero = new THREE.Group();
 
-        const cRed = 0xd63031;
-        const cWhite = 0xf5f6fa;
-        const cBlack = 0x1e272e;
-        const cGrey = 0x636e72;
-        const cBelt = 0x2d3436;
+        // Приглушённая палитра под тёмную карту (без ярких засветов)
+        const cRed   = 0x942929; // тёмно-красная кепка и рукава
+        const cWhite = 0x9fa3a8; // приглушённый фарфорово-серый (голова, ноги, плечи)
+        const cDark  = 0x262b30; // тёмно-графитовая спина куртки и подошва
+        const cBlack = 0x111317; // очки, рот, контуры
+        const cBuckle = 0x4b525c; // спокойная пряжка на спине (без свечения)
 
         const mat = (col) => new THREE.MeshLambertMaterial({ color: col });
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x0b0c0e });
 
-        function addBox(w, h, d, x, y, z, color, parent = hero) {
+        function addBox(w, h, d, x, y, z, color, parent = hero, outline = true) {
             const geo = new THREE.BoxGeometry(w, h, d);
             const mesh = new THREE.Mesh(geo, mat(color));
             mesh.position.set(x, y, z);
             mesh.castShadow = true;
-            mesh.receiveShadow = true;
+            mesh.receiveShadow = false; // Без полосок самозатенения
+            if (outline) {
+                const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+                mesh.add(edges);
+            }
             parent.add(mesh);
             return mesh;
         }
 
-        // 1. Ноги и обувь
-        const legL = addBox(0.28, 0.35, 0.45, -0.22, 0.17, 0, cBlack);
-        const legR = addBox(0.28, 0.35, 0.45, 0.22, 0.17, 0, cBlack);
+        // 1. Ноги (светло-серые с тёмной подошвой)
+        const legL = new THREE.Group();
+        addBox(0.26, 0.24, 0.34, 0, 0.16, 0, cWhite, legL);
+        addBox(0.27, 0.08, 0.36, 0, 0.04, 0, cDark, legL);
+        legL.position.set(-0.20, 0, 0);
+        hero.add(legL);
 
-        // 2. Тело и одежда (лицевая сторона смотрит в -Z, спина к нам в +Z)
-        const body = addBox(0.72, 0.48, 0.52, 0, 0.55, 0, cGrey);
-        addBox(0.74, 0.12, 0.54, 0, 0.45, 0, cBelt);
-        addBox(0.42, 0.18, 0.54, 0, 0.68, -0.01, cWhite); // воротник спереди
-        addBox(0.14, 0.14, 0.56, 0, 0.66, -0.02, cRed);   // галстук спереди
+        const legR = legL.clone();
+        legR.position.set(0.20, 0, 0);
+        hero.add(legR);
 
-        // 3. Руки
-        const armL = addBox(0.2, 0.4, 0.24, -0.46, 0.55, 0, cRed);
-        const armR = addBox(0.2, 0.4, 0.24, 0.46, 0.55, 0, cRed);
+        // 2. Торс (тёмная спина куртки + светлая кромка снизу + спокойная пряжка)
+        const body = addBox(0.76, 0.34, 0.48, 0, 0.50, 0, cDark);
+        addBox(0.74, 0.12, 0.46, 0, 0.30, 0, cWhite);            // светлый низ куртки
+        addBox(0.32, 0.13, 0.05, 0, 0.38, 0.25, cBuckle);        // пряжка на спине без света
+        addBox(0.14, 0.18, 0.05, 0, 0.50, -0.25, cRed);          // галстук спереди
 
-        // 4. Оружие в правой руке (направлено вперед)
+        // 3. Руки (верх светлый, низ тёмно-красный — как на скрине)
+        const armL = new THREE.Group();
+        addBox(0.18, 0.16, 0.26, 0, 0.08, 0, cWhite, armL);
+        addBox(0.20, 0.24, 0.28, 0, -0.10, 0, cRed, armL);
+        armL.position.set(-0.48, 0.50, 0);
+        hero.add(armL);
+
+        const armR = new THREE.Group();
+        addBox(0.18, 0.16, 0.26, 0, 0.08, 0, cWhite, armR);
+        addBox(0.20, 0.24, 0.28, 0, -0.10, 0, cRed, armR);
+        armR.position.set(0.48, 0.50, 0);
+        hero.add(armR);
+
+        // 4. Огнестрел в правой руке
         const gun = new THREE.Group();
-        addBox(0.1, 0.14, 0.45, 0, 0, -0.2, 0x111111, gun);
-        gun.position.set(0.48, 0.45, -0.15);
+        addBox(0.10, 0.14, 0.48, 0, 0, -0.22, 0x16181d, gun);
+        gun.position.set(0.48, 0.46, -0.15);
         hero.add(gun);
 
-        // 5. Голова
+        // 4б. Боевой топор (для слота 1)
+        const axe = new THREE.Group();
+        addBox(0.06, 0.78, 0.06, 0, 0.22, 0, 0x3b2412, axe);
+        addBox(0.05, 0.28, 0.32, 0, 0.52, -0.14, 0x7b8491, axe);
+        addBox(0.06, 0.26, 0.05, 0, 0.52, -0.30, 0xb8c0cc, axe);
+        axe.position.set(0.50, 0.46, -0.18);
+        axe.visible = false;
+        hero.add(axe);
+
+        // 5. Большая квадратная голова + кепка с козырьком назад
         const head = new THREE.Group();
-        addBox(0.85, 0.72, 0.75, 0, 1.15, 0, cWhite, head);
-        // Лицо и рот направлены вперед (-Z)
-        addBox(0.14, 0.12, 0.08, 0, 0.96, -0.4, cBlack, head);
+        addBox(0.90, 0.72, 0.78, 0, 1.05, 0, cWhite, head);        // голова
+        addBox(0.76, 0.10, 0.06, 0, 1.12, -0.40, cRed, head);      // оправа спереди
+        addBox(0.24, 0.16, 0.06, -0.20, 1.05, -0.40, cBlack, head);// линза L
+        addBox(0.24, 0.16, 0.06, 0.20, 1.05, -0.40, cBlack, head); // линза R
+        addBox(0.14, 0.10, 0.06, 0, 0.88, -0.40, cBlack, head);    // рот
 
-        // Очки спереди
-        addBox(0.78, 0.1, 0.1, 0, 1.22, -0.4, cRed, head);
-        addBox(0.26, 0.18, 0.1, -0.22, 1.14, -0.4, cBlack, head);
-        addBox(0.26, 0.18, 0.1, 0.22, 1.14, -0.4, cBlack, head);
-
-        // Кепка и козырек
-        addBox(0.88, 0.28, 0.78, 0, 1.55, 0, cRed, head);
-        addBox(0.46, 0.12, 0.25, 0, 1.68, -0.05, cRed, head);
-        addBox(0.26, 0.08, 0.35, 0.42, 1.52, 0.28, cRed, head); // козырек сбоку/сзади
-
+        // Кепка: основа + верхняя кнопка + широкий козырёк назад (+Z)
+        addBox(0.94, 0.24, 0.82, 0, 1.50, 0, cRed, head);
+        addBox(0.48, 0.12, 0.36, 0, 1.66, 0.02, cRed, head);
+        addBox(0.90, 0.12, 0.34, 0, 1.38, 0.44, cRed, head);       // козырёк назад как на скрине
         hero.add(head);
-        hero.scale.set(1.2, 1.2, 1.2);
 
+        hero.scale.set(1.18, 1.18, 1.18);
         hero.userData = {
-            parts: {
-                head: head,
-                body: body,
-                leftArm: armL,
-                rightArm: armR,
-                leftLeg: legL,
-                rightLeg: legR,
-                gun: gun
-            }
+            parts: { head, body, leftArm: armL, rightArm: armR, leftLeg: legL, rightLeg: legR, gun, axe }
         };
+        hero.rotation.order = 'YXZ';
         hero.rotation.y = Math.PI;
         return hero;
     }
-        const playerGroup = createVoxelHero();
-        scene.add(playerGroup);
-        const gunMesh = playerGroup.userData.parts.gun;
+    const playerGroup = createVoxelHero();
+    scene.add(playerGroup);
+    const gunMesh = playerGroup.userData.parts.gun;
+    const axeMesh = playerGroup.userData.parts.axe;
 
        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let soundVolume = 0.8;
@@ -3303,9 +3692,11 @@ function spawnLegsExplosion(mob) {
             voiceFilter.connect(voiceGain);
             voiceGain.connect(master);
 
-            formant1.start(t + 0.02);
-            formant2.start(t + 0.02);
-           } // <--- ВОТ ЭТА СКОБКА ТЕПЕРЬ ПРАВИЛЬНО ЗАКРЫВАЕТ playPlayerHurtSound
+          formant1.start(t + 0.02);
+formant2.start(t + 0.02);
+formant1.stop(t + 0.28);
+formant2.stop(t + 0.28);
+}
 
         // Звук спуска тетивы лука стрелка
         function playBowReleaseSound() {
@@ -3521,11 +3912,189 @@ function spawnLegsExplosion(mob) {
         // 3: Дробовик (6 патронов, перезарядка 2.2 сек)
        // Настройка физики оружия: pellets (кол-во дробинок), spread (разброс), auto (зажим ЛКМ)
        // Настройка оружия: добавлена переменная reserve (запасные патроны)
-        const WEAPONS = {
-            1: { name: 'SNIPER', maxAmmo: 1, ammo: 1, reserve: 3, fireDelay: 1.45, reloadTime: 2.8, sound: 'sniper', dmg: 140, auto: false, pellets: 1, spread: 0 },
-            2: { name: 'RIFLE', maxAmmo: 30, ammo: 30, reserve: 30, fireDelay: 0.12, reloadTime: 1.8, sound: 'rifle', dmg: 28, auto: true, pellets: 1, spread: 0.035 },
-            3: { name: 'SHOTGUN', maxAmmo: 6, ammo: 6, reserve: 6, fireDelay: 0.95, reloadTime: 2.2, sound: 'shotgun', dmg: 18, auto: false, pellets: 8, spread: 0.095 }
+  const WEAPONS = {
+            1: { name: 'AXE',     isMelee: true, maxAmmo: 0, ammo: 0, reserve: 0, fireDelay: 1.05, reloadTime: 0, dmg: 260, auto: false, pellets: 0, baseSpread: 0, moveSpread: 0, bloom: 0, maxBloom: 0, recoil: 0 },
+            2: { name: 'RIFLE',   maxAmmo: 30, ammo: 30, reserve: 90, fireDelay: 0.11, reloadTime: 1.6, sound: 'rifle',   dmg: 32, auto: true,  pellets: 1, baseSpread: 0.007, moveSpread: 0.018, bloom: 0.008, maxBloom: 0.055, recoil: 0.014 },
+            3: { name: 'SHOTGUN', maxAmmo: 6,  ammo: 6,  reserve: 24, fireDelay: 0.82, reloadTime: 2.0, sound: 'shotgun', dmg: 22, auto: false, pellets: 9, baseSpread: 0.072, moveSpread: 0.018, bloom: 0.02,  maxBloom: 0.05,  recoil: 0.052 }
         };
+
+        let weaponBloom = 0, recoilPitch = 0, recoilYaw = 0, gunRecoilZ = 0;
+        let shoulderSide = 1, shoulderLerp = 1;
+        let isAiming = false, aimLerp = 0;
+        let axeSwingActive = false, axeSwingTime = 0, axeHitTriggered = false;
+        let slideLeanX = 0, slideLeanZ = 0, slideCamDrop = 0;
+        const activeTracers = [];
+        let hitmarkerTimer = null;
+
+        // Сброс брони укреплённого скелета на пол с физикой
+        function shatterWarriorArmor(mob) {
+            mob.userData.hasArmor = false;
+            mob.userData.armorMult = 1.0;
+            playBoneCrunchSound();
+            showKillBanner("🛡️ ARMOR SHATTERED!", 'core');
+
+            const origin = new THREE.Vector3();
+            mob.getWorldPosition(origin);
+
+            (mob.userData.armorMeshes || []).forEach(m => {
+                if (!m || !m.visible) return;
+                const wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
+                m.getWorldPosition(wp);
+                m.getWorldQuaternion(wq);
+                m.getWorldScale(ws);
+                m.visible = false;
+
+                const piece = new THREE.Mesh(m.geometry.clone(), m.material.clone());
+                piece.position.copy(wp);
+                piece.quaternion.copy(wq);
+                piece.scale.copy(ws);
+                piece.castShadow = true;
+                scene.add(piece);
+
+                const dir = new THREE.Vector3().subVectors(wp, origin);
+                dir.y = 0;
+                if (dir.lengthSq() < 0.001) dir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+                dir.normalize();
+
+                boneDebris.push({
+                    mesh: piece,
+                    vel: new THREE.Vector3(dir.x * (3.5 + Math.random() * 3), 3.2 + Math.random() * 2.5, dir.z * (3.5 + Math.random() * 3)),
+                    rotVel: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10),
+                    isGrounded: false
+                });
+            });
+            mob.userData.armorMeshes = [];
+        }
+
+    // Вертикальный разрубающий удар топором: ровно 1 ближайшая цель перед героем
+        function executeAxeStrike() {
+            const pPos = playerGroup.position;
+            const fwd = new THREE.Vector3(0, 0, 1).applyAxisAngle(_upAxis, yaw).normalize();
+
+            let target = null;
+            let targetIdx = -1;
+            let bestDist = 3.7;
+
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                if (!enemy || enemy.userData.hp <= 0) continue;
+
+                const toEnemy = new THREE.Vector3().subVectors(enemy.position, pPos);
+                toEnemy.y = 0;
+                const dist = toEnemy.length();
+                if (dist > bestDist) continue;
+
+                // Узкий фронтальный сектор для точного рубящего удара (~90°)
+                if (dist > 0.5 && fwd.dot(toEnemy.normalize()) < 0.5) continue;
+
+                bestDist = dist;
+                target = enemy;
+                targetIdx = i;
+            }
+
+            if (!target) return;
+
+            const hitPos = target.position.clone().setY(1.25);
+            let hitType = 'head';
+
+            if (target.userData.role === 'boss') {
+                target.userData.hp -= WEAPONS[1].dmg;
+                hitType = 'body';
+            } else if (target.userData.hasArmor) {
+                shatterWarriorArmor(target);
+                target.userData.hp = Math.max(40, target.userData.hp - 70);
+                hitType = 'core';
+            } else {
+                target.userData.hp = 0;
+                hitType = 'head';
+            }
+
+            spawnHitBones(hitPos);
+            createBloodSplatter(hitPos, hitType);
+            triggerHitmarker(hitType);
+            playBoneCrunchSound();
+
+            if (target.userData.hp <= 0) {
+                addScore(130, 'head');
+                if (target.userData.role === 'boss') {
+                    if (target.userData.actions?.death) crossFadeAnim(target, 'death', 0.1);
+                    setTimeout(() => {
+                        scene.remove(target);
+                        const idx = enemies.indexOf(target);
+                        if (idx !== -1) enemies.splice(idx, 1);
+                    }, 3500);
+                } else {
+                    playSpatialMP3(skelDeathBuffers, target.position, 0.4, 20);
+                    spawnBoneExplosion(target);
+                    scene.remove(target);
+                    enemies.splice(targetIdx, 1);
+                }
+                const scoreEl = document.getElementById('player-score');
+                if (scoreEl) scoreEl.innerText = `WAVE ${getDetectedWave()} | REMAINING: ${enemies.length}`;
+            }
+        }
+
+        function getCurrentSpread() {
+            const w = WEAPONS[currentSlot];
+            if (w.isMelee) return 0;
+            const moving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
+            const raw = w.baseSpread + weaponBloom + (moving ? w.moveSpread : 0) + (!isGrounded ? 0.025 : 0);
+            return raw * (1 - aimLerp * 0.62); // Прицеливание сужает разброс на 62%
+        }
+
+        function updateCrosshairUI() {
+            const gap = Math.round(5 + getCurrentSpread() * 260);
+            const t = document.getElementById('ch-top'), b = document.getElementById('ch-bottom');
+            const l = document.getElementById('ch-left'), r = document.getElementById('ch-right');
+            if (t) t.style.transform = `translateY(${-gap}px)`;
+            if (b) b.style.transform = `translateY(${gap}px)`;
+            if (l) l.style.transform = `translateX(${-gap}px)`;
+            if (r) r.style.transform = `translateX(${gap}px)`;
+        }
+
+        function triggerHitmarker(hitType) {
+            const hm = document.getElementById('hitmarker');
+            if (!hm) return;
+            const svg = hm.querySelector('svg');
+            if (svg) svg.setAttribute('stroke', hitType === 'core' ? '#ffd700' : (hitType === 'head' ? '#ff2222' : '#ffffff'));
+            hm.classList.add('show');
+            clearTimeout(hitmarkerTimer);
+            hitmarkerTimer = setTimeout(() => hm.classList.remove('show'), 120);
+        }
+
+        function spawnTracer(start, end) {
+            const mat = new THREE.LineBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0.85 });
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), mat);
+            scene.add(line);
+            activeTracers.push({ mesh: line, mat, life: 0.09, maxLife: 0.09 });
+        }
+
+        function createBloodSplatter(point, hitType = 'body') {
+            const color = hitType === 'core' ? 0xffbb00 : (hitType === 'head' ? 0xff2222 : 0xc8b89a);
+            const mat = new THREE.MeshBasicMaterial({ color });
+            const geo = new THREE.BoxGeometry(0.055, 0.055, 0.055);
+            for (let i = 0; i < 5; i++) {
+                const m = new THREE.Mesh(geo, mat);
+                m.position.copy(point);
+                scene.add(m);
+                bloodParticles.push({
+                    mesh: m,
+                    vel: new THREE.Vector3((Math.random() - 0.5) * 6, 1.8 + Math.random() * 3, (Math.random() - 0.5) * 6),
+                    life: 24
+                });
+            }
+        }
+
+        function isRaycastable(obj) {
+            if (obj.userData?.isHitbox) {
+                let p = obj.parent;
+                while (p) { if (p.visible === false) return false; p = p.parent; }
+                return true;
+            }
+            let c = obj;
+            while (c) { if (c.visible === false) return false; c = c.parent; }
+            return true;
+        }
 
          currentSlot = 1;
         let isReloading = false;
@@ -3538,23 +4107,24 @@ function spawnLegsExplosion(mob) {
             const curEl = document.getElementById('ammo-current');
             const maxEl = document.getElementById('ammo-max');
             if (!display || !curEl || !maxEl) return;
-
-            if (isReloading) {
+if (w.isMelee) {
+                display.classList.remove('reloading');
+                curEl.innerText = 'AXE';
+                maxEl.innerText = '∞';
+            } else if (isReloading) {
                 display.classList.add('reloading');
                 curEl.innerText = 'RELOADING...';
                 maxEl.innerText = '';
             } else {
                 display.classList.remove('reloading');
                 curEl.innerText = w.ammo;
-                // Теперь справа выводится реальный запас (reserve), а не размер обоймы
-                maxEl.innerText = `/ ${w.reserve}`; 
+                maxEl.innerText = `/ ${w.reserve}`;
             }
         }
 
         function reloadWeapon() {
             const w = WEAPONS[currentSlot];
-            // Блокируем перезарядку, если обойма полна ИЛИ если кончился резерв в кармане
-            if (isReloading || w.ammo >= w.maxAmmo || w.reserve <= 0) return;
+            if (w.isMelee || isReloading || w.ammo >= w.maxAmmo || w.reserve <= 0) return;
             isReloading = true;
             reloadTimer = w.reloadTime;
             updateAmmoHud();
@@ -3564,6 +4134,7 @@ function spawnLegsExplosion(mob) {
             if (slot < 1 || slot > 3) return;
             currentSlot = slot;
             isReloading = false;
+            if (slot === 1) isAiming = false;
             for (let i = 1; i <= 3; i++) {
                 const el = document.getElementById(`slot-${i}`);
                 if (el) el.classList.remove('active');
@@ -3571,11 +4142,12 @@ function spawnLegsExplosion(mob) {
             const activeEl = document.getElementById(`slot-${slot}`);
             if (activeEl) activeEl.classList.add('active');
 
-            if (typeof gunMesh !== 'undefined' && gunMesh) {
-                if (slot === 1) gunMesh.scale.set(0.8, 0.8, 1.7);
+            if (gunMesh) {
+                gunMesh.visible = (slot !== 1);
                 if (slot === 2) gunMesh.scale.set(1.0, 1.1, 1.2);
                 if (slot === 3) gunMesh.scale.set(1.3, 1.3, 1.0);
             }
+            if (axeMesh) axeMesh.visible = (slot === 1);
             updateAmmoHud();
         }
 
@@ -3596,7 +4168,12 @@ function spawnLegsExplosion(mob) {
             if (e.key === '1') setWeapon(1);
             if (e.key === '2') setWeapon(2);
             if (e.key === '3') setWeapon(3);
-            if (e.code === 'KeyR' && gameActive) reloadWeapon();
+          if (e.code === 'KeyR' && gameActive) reloadWeapon();
+            if (e.code === 'KeyQ' && gameActive) {
+                shoulderSide *= -1;
+                const ind = document.getElementById('shoulder-indicator');
+                if (ind) ind.textContent = shoulderSide > 0 ? '[Q] SHOULDER: RIGHT' : '[Q] SHOULDER: LEFT';
+            }
             
             // === АТАКА БЛИЖНЕГО БОЯ [F] ===
             if (e.code === 'KeyF' && gameActive) {
@@ -3664,202 +4241,226 @@ function spawnLegsExplosion(mob) {
                 isGrounded = false;
             }
 
-            const isSlideKey = (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyC');
+         const isSlideKey = (e.code === 'KeyC' || e.code === 'ShiftLeft' || e.code === 'ShiftRight');
             const hasMoveInput = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
             if (isSlideKey && hasMoveInput && isGrounded && slideTimer <= 0 && slideCooldown <= 0 && gameActive) {
                 const fwd = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
                 const sd = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
                 slideDir.set(0, 0, 0);
-                if (keys['KeyW']) slideDir.add(fwd);
-                if (keys['KeyS']) slideDir.sub(fwd);
-                if (keys['KeyA']) slideDir.add(sd);
-                if (keys['KeyD']) slideDir.sub(sd);
-               if (slideDir.lengthSq() > 0.001) {
+                let localF = 0, localS = 0;
+                if (keys['KeyW']) { slideDir.add(fwd); localF += 1; }
+                if (keys['KeyS']) { slideDir.sub(fwd); localF -= 1; }
+                if (keys['KeyA']) { slideDir.add(sd);  localS += 1; }
+                if (keys['KeyD']) { slideDir.sub(sd);  localS -= 1; }
+                if (slideDir.lengthSq() > 0.001) {
                     slideDir.normalize();
-                    slideTimer = 0.48; 
-                    slideCooldown = 1.5; // Увеличен кулдаун до 1.5 сек (защита от спама)
+                    slideTimer = 0.56;
+                    slideCooldown = 1.25;
+                    // Целевой наклон тела в сторону подката (вперёд/назад/влево/вправо/по диагонали)
+                    playerGroup.userData.slideTargetX = localF * 0.52;
+                    playerGroup.userData.slideTargetZ = -localS * 0.55;
                 }
             }
         });
         window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
+      window.addEventListener('contextmenu', (e) => e.preventDefault());
+
         window.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== document.body) return;
-            yaw -= e.movementX * sens;
-            pitch += e.movementY * sens;
+            const curSens = isAiming ? sens * 0.58 : sens;
+            yaw -= e.movementX * curSens;
+            pitch += e.movementY * curSens;
             pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, pitch));
         });
 
         const raycaster = new THREE.Raycaster();
-        let shootCooldownTimer = 0; 
+        let shootCooldownTimer = 0;
 
         window.addEventListener('mousedown', (e) => {
             if (document.pointerLockElement !== document.body || !gameActive) return;
             if (e.button === 0) {
-                isMouseDown = true; // Зажимаем курок
-                // Если оружие не автоматическое (снайперка/дробовик), стреляем сразу 1 раз по клику
-                if (!WEAPONS[currentSlot].auto) tryFireWeapon(); 
+                isMouseDown = true;
+                if (!WEAPONS[currentSlot].auto) tryFireWeapon();
+            }
+            if (e.button === 2 && !WEAPONS[currentSlot].isMelee) {
+                isAiming = true;
             }
         });
         window.addEventListener('mouseup', (e) => {
-            if (e.button === 0) isMouseDown = false; // Отпускаем курок
+            if (e.button === 0) isMouseDown = false;
+            if (e.button === 2) isAiming = false;
         });
 
-        function tryFireWeapon() {
+      function tryFireWeapon() {
             if (shootCooldownTimer > 0 || isReloading) return;
             const currentGun = WEAPONS[currentSlot];
-            
-            if (currentGun.ammo <= 0) {
-                reloadWeapon();
+
+            // Замах и удар топором (КД не даёт спамить)
+            if (currentGun.isMelee) {
+                shootCooldownTimer = currentGun.fireDelay;
+                axeSwingActive = true;
+                axeSwingTime = 0;
+                axeHitTriggered = false;
+                if (typeof playBowReleaseSound === 'function') playBowReleaseSound(); // звук рассекаемого воздуха
                 return;
             }
+
+            if (currentGun.ammo <= 0) { reloadWeapon(); return; }
 
             currentGun.ammo--;
             updateAmmoHud();
             shootCooldownTimer = currentGun.fireDelay;
 
-            if (typeof playGunSound === 'function') {
-                if (currentSlot === 1) playGunSound('sniper');
-                if (currentSlot === 2) playGunSound('rifle');
-                if (currentSlot === 3) playGunSound('shotgun');
-            }
+            if (typeof playGunSound === 'function') playGunSound(currentGun.sound);
 
-            // Отдача модели оружия
-            const kickback = currentSlot === 1 ? 0.35 : currentSlot === 3 ? 0.28 : 0.14;
-            if (typeof gunMesh !== 'undefined' && gunMesh) {
-                gunMesh.position.z -= kickback;
-                setTimeout(() => { gunMesh.position.z = 0.35; }, 90);
-                
-                // Тряска камеры при спрее винтовки (отдача в экран)
-                if (currentGun.auto) {
-                    pitch += (Math.random() - 0.5) * 0.015;
-                    yaw += (Math.random() - 0.5) * 0.015;
-                }
-            }
-            
+            // Отдача оружия и камеры с плавным возвратом
+            gunRecoilZ = currentSlot === 1 ? 0.24 : (currentSlot === 3 ? 0.20 : 0.11);
+            recoilPitch -= currentGun.recoil;
+            recoilYaw += (Math.random() - 0.5) * 0.012;
+            if (typeof muzzleFlashLight !== 'undefined') muzzleFlashLight.intensity = 6.0;
 
-           // Включаем свет от выстрела
-            if (typeof muzzleFlashLight !== 'undefined') {
-                muzzleFlashLight.intensity = 6.0;
-            }
+            const spreadNow = getCurrentSpread();
+            weaponBloom = Math.min(currentGun.maxBloom, weaponBloom + currentGun.bloom);
 
             const cameraDir = new THREE.Vector3();
             camera.getWorldDirection(cameraDir);
+            const camRight = new THREE.Vector3().crossVectors(cameraDir, camera.up).normalize();
+            const camUp = new THREE.Vector3().crossVectors(camRight, cameraDir).normalize();
+            const minDist = Math.max(0.5, camera.position.distanceTo(playerGroup.position) - 0.4);
+            const muzzlePos = new THREE.Vector3(0, 0, -0.5);
+            gunMesh.localToWorld(muzzlePos);
 
-            // Обработка дробинок / разброса
+            let bestHitType = null;
+
             for (let p = 0; p < currentGun.pellets; p++) {
                 const dir = cameraDir.clone();
-                // Физика спрея/разброса дроби
-                if (currentGun.spread > 0) {
-                    dir.x += (Math.random() - 0.5) * currentGun.spread;
-                    dir.y += (Math.random() - 0.5) * currentGun.spread;
-                    dir.z += (Math.random() - 0.5) * currentGun.spread;
+                if (spreadNow > 0) {
+                    const theta = currentGun.pellets > 1
+                        ? (p / currentGun.pellets) * Math.PI * 2 + Math.random() * 0.5
+                        : Math.random() * Math.PI * 2;
+                    const r = Math.sqrt(Math.random()) * spreadNow;
+                    dir.addScaledVector(camRight, Math.cos(theta) * r);
+                    dir.addScaledVector(camUp, Math.sin(theta) * r);
                     dir.normalize();
                 }
+
                 raycaster.set(camera.position, dir);
+                raycaster.near = minDist;
 
-                const wallHits = raycaster.intersectObjects(colliders, false);
-                const wallDist = wallHits.length > 0 ? wallHits[0].distance : Infinity;
+                const wallHits = raycaster.intersectObjects(colliders, false).filter(h => h.distance >= minDist);
+                const wallDist = wallHits.length > 0 ? wallHits[0].distance : 140;
 
-                const hits = raycaster.intersectObjects(enemies, true);
+                const hits = raycaster.intersectObjects(enemies, true)
+                    .filter(h => h.distance >= minDist && isRaycastable(h.object));
+
                 if (hits.length > 0 && hits[0].distance < wallDist) {
-                    const hitMesh = hits[0].object;
-                    const hitEnemy = hitMesh.userData.rootMob || (enemies.includes(hitMesh) ? hitMesh : (hitMesh.parent && hitMesh.parent.userData && hitMesh.parent.userData.rootMob ? hitMesh.parent.userData.rootMob : null));
+                    spawnTracer(muzzlePos, hits[0].point);
 
-                  if (hitEnemy && hitEnemy.userData && hitEnemy.userData.hp !== undefined) {
-                        if (hitEnemy.userData.hp <= 0) continue; // Защита: моб уже убит
+                    let hitEnemy = null;
+                    let w = hits[0].object;
+                    while (w) {
+                        if (w.userData?.rootMob) { hitEnemy = w.userData.rootMob; break; }
+                        if (enemies.includes(w)) { hitEnemy = w; break; }
+                        w = w.parent;
+                    }
 
-                    // Ищем пробитие пули до ядра или головы (проверяем первые 3 хитбокса, чтобы прошить ребра)
-                        let isCore = false;
-                        let isHeadMesh = false;
-
-                        for (let h = 0; h < Math.min(hits.length, 3); h++) {
-                            // Если луч ушел дальше, чем на 60 см от точки первого попадания - не считаем (пуля застряла)
-                            if (hits[h].distance - hits[0].distance > 0.6) break; 
-                            
-                            let obj = hits[h].object;
-                            while (obj) { // Идем вверх по иерархии костей
-                                if (obj.userData.isCore === true) isCore = true;
-                                if (obj.userData.isHead === true) isHeadMesh = true;
-                                obj = obj.parent;
-                            }
-                        }
-                        
-                      // Никаких расчетов по высоте! Только строгие физические хитбоксы
-                        const isHeadshot = isHeadMesh && !isCore;
-
-                       // Проверяем, попали ли в ноги (если скелет еще полноценный)
-                        let isLegHit = false;
-                        for (let h = 0; h < Math.min(hits.length, 3); h++) {
-                            if (hits[h].distance - hits[0].distance > 0.6) break;
+                    if (hitEnemy && hitEnemy.userData && hitEnemy.userData.hp > 0) {
+                        let isCore = false, isHead = false, isLeg = false;
+                        for (let h = 0; h < Math.min(hits.length, 5); h++) {
+                            if (hits[h].distance - hits[0].distance > 0.8) break;
                             let obj = hits[h].object;
                             while (obj) {
-                                // Ищем точный маркер кости ноги вместо угадывания геометрии
-                                if (obj.userData.isLeg === true && !hitEnemy.userData.isCrawler) {
-                                    isLegHit = true;
-                                    break;
-                                }
+                                if (obj.userData?.isCore) isCore = true;
+                                if (obj.userData?.isHead) isHead = true;
+                                if (obj.userData?.isLeg && !hitEnemy.userData.isCrawler) isLeg = true;
                                 obj = obj.parent;
                             }
                         }
 
-                        let hitType = 'body';
-                        let finalDmg = currentGun.dmg;
-                        let reward = 100;
+                  let hitType = 'body', finalDmg = currentGun.dmg, reward = 100;
 
-                        if (isCore) {
+                        // 1. Обычный скелет в железном шлеме: 1-й хедшот сбивает шлем на пол!
+                        if (isHead && hitEnemy.userData.hasHelmet && hitEnemy.userData.minionHelmet) {
+                            hitEnemy.userData.hasHelmet = false;
+                            const hGroup = hitEnemy.userData.minionHelmet;
+                            const wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
+                            hGroup.getWorldPosition(wp);
+                            hGroup.getWorldQuaternion(wq);
+                            hGroup.getWorldScale(ws);
+                            hGroup.visible = false;
+
+                            const flyingHelm = hGroup.clone();
+                            flyingHelm.visible = true;
+                            flyingHelm.position.copy(wp);
+                            flyingHelm.quaternion.copy(wq);
+                            flyingHelm.scale.copy(ws);
+                            scene.add(flyingHelm);
+                            boneDebris.push({
+                                mesh: flyingHelm,
+                                vel: new THREE.Vector3((Math.random() - 0.5) * 4, 4.5, (Math.random() - 0.5) * 4),
+                                rotVel: new THREE.Vector3(10, 12, 8),
+                                isGrounded: false
+                            });
+
+                            playBoneCrunchSound();
+                            showKillBanner("⛑️ HELMET OFF!", 'core');
                             hitType = 'core';
-                            finalDmg *= 3.0;
-                            reward = 150;
-                        } else if (isHeadshot) {
-                            hitType = 'head';
-                            finalDmg *= 2.0;
-                            reward = 125;
-                     } else if (isLegHit && !hitEnemy.userData.isCrawler && hitEnemy.userData.hp > 30 && hitEnemy.userData.role !== 'boss') {
-                            hitEnemy.userData.isCrawler = true;
-                            hitEnemy.userData.speed *= 0.4; // Замедляем ползуна
-                            hitType = 'legs';
-                            reward = 110;
+                            finalDmg = currentGun.dmg * 0.25; // Шлем поглотил основной урон первого выстрела
+                        }
+                        // 2. Укреплённый скелет (Воин): 5 выстрелов винтовки или 1-2 дробовика сносят броню!
+                        else if (hitEnemy.userData.hasArmor) {
+                            hitEnemy.userData.armorHp = (hitEnemy.userData.armorHp || 150) - currentGun.dmg;
+                            hitType = 'body';
+                            finalDmg = currentGun.dmg * 0.2; // Пока броня цела — проходит лишь малый урон
 
-                            // Отрываем ноги визуально
-                            if (typeof spawnLegsExplosion === 'function') {
-                                spawnLegsExplosion(hitEnemy);
+                            if (hitEnemy.userData.armorHp <= 0) {
+                                shatterWarriorArmor(hitEnemy); // Броня со звоном разлетается на пол!
+                                hitType = 'core';
                             }
                         }
-hitEnemy.userData.hp -= finalDmg;
+                        // 3. Обычный расчёт урона (без брони/шлема)
+                        else if (isCore) { hitType = 'core'; finalDmg *= 3.0; reward = 150; }
+                        else if (isHead) { hitType = 'head'; finalDmg *= 2.0; reward = 125; }
+                        else if (isLeg && !hitEnemy.userData.isCrawler && hitEnemy.userData.hp > 30 && hitEnemy.userData.role !== 'boss') {
+                            hitEnemy.userData.isCrawler = true;
+                            hitEnemy.userData.speed *= 0.4;
+                            hitType = 'legs'; reward = 110;
+                            if (typeof spawnLegsExplosion === 'function') spawnLegsExplosion(hitEnemy);
+                        }
 
-                        // ВЫЗЫВАЕМ ОТЛЕТАЮЩИЕ ОСКОЛКИ КОСТЕЙ!
+                        if (hitType === 'core' || (hitType === 'head' && bestHitType !== 'core') || !bestHitType) bestHitType = hitType;
+
+                        hitEnemy.userData.hp -= finalDmg;
                         spawnHitBones(hits[0].point);
+                        createBloodSplatter(hits[0].point, hitType);
 
-                        if (typeof createBloodSplatter === 'function') createBloodSplatter(hits[0].point);
-
-                      if (hitEnemy.userData.hp <= 0) {
+                        if (hitEnemy.userData.hp <= 0) {
                             if (typeof addScore === 'function') addScore(reward, hitType);
-
                             if (hitEnemy.userData.role === 'boss') {
                                 if (hitEnemy.userData.actions?.death) crossFadeAnim(hitEnemy, 'death', 0.1);
                                 setTimeout(() => {
                                     scene.remove(hitEnemy);
                                     const idx = enemies.indexOf(hitEnemy);
                                     if (idx !== -1) enemies.splice(idx, 1);
-                                }, 3500); 
-                          } else {
-                                // Звук рассыпающихся костей
+                                }, 3500);
+                            } else {
                                 playSpatialMP3(skelDeathBuffers, hitEnemy.position, 0.4, 20);
-                                
                                 spawnBoneExplosion(hitEnemy);
                                 scene.remove(hitEnemy);
                                 const idx = enemies.indexOf(hitEnemy);
                                 if (idx !== -1) enemies.splice(idx, 1);
                             }
-
                             const scoreEl = document.getElementById('player-score');
                             if (scoreEl) scoreEl.innerText = `WAVE ${getDetectedWave()} | REMAINING: ${enemies.length}`;
                         }
                     }
+                } else {
+                    spawnTracer(muzzlePos, wallHits.length > 0 ? wallHits[0].point : camera.position.clone().addScaledVector(dir, 90));
                 }
             }
 
+            if (bestHitType) triggerHitmarker(bestHitType);
             if (currentGun.ammo <= 0) reloadWeapon();
         }
 
@@ -3876,7 +4477,15 @@ hitEnemy.userData.hp -= finalDmg;
             return 0;
         }
 
-        function checkCollision(pos, height = 1.8) {
+     function checkCollision(pos, height = 1.8) {
+            // Запрещаем игроку заходить или падать внутрь палатки на любой высоте
+            if (typeof tentBounds !== 'undefined') {
+                const pad = 0.45;
+                if (pos.x > tentBounds.minX - pad && pos.x < tentBounds.maxX + pad &&
+                    pos.z > tentBounds.minZ - pad && pos.z < tentBounds.maxZ + pad) {
+                    return true;
+                }
+            }
             if (typeof barricades !== 'undefined' && barricades.length > 0) {
                 const playerRadius = 0.4;
                 const postRadius = 0.2;
@@ -3931,9 +4540,23 @@ hitEnemy.userData.hp -= finalDmg;
             const delta = Math.min(clock.getDelta(), 0.1);
             globalAnimTime += delta;
 
-            if (gameActive) {
+          if (gameActive) {
                 if (slideCooldown > 0) slideCooldown -= delta;
                 if (shootCooldownTimer > 0) shootCooldownTimer -= delta;
+
+                weaponBloom = Math.max(0, weaponBloom - delta * 0.09);
+                recoilPitch = THREE.MathUtils.lerp(recoilPitch, 0, Math.min(1, delta * 12));
+                recoilYaw   = THREE.MathUtils.lerp(recoilYaw, 0, Math.min(1, delta * 12));
+                gunRecoilZ  = THREE.MathUtils.lerp(gunRecoilZ, 0, Math.min(1, delta * 16));
+                gunMesh.position.z = -0.15 + gunRecoilZ;
+                updateCrosshairUI();
+
+                for (let i = activeTracers.length - 1; i >= 0; i--) {
+                    const tr = activeTracers[i];
+                    tr.life -= delta;
+                    tr.mat.opacity = Math.max(0, tr.life / tr.maxLife);
+                    if (tr.life <= 0) { scene.remove(tr.mesh); activeTracers.splice(i, 1); }
+                }
              // Перезарядка с учетом вычета из резерва
                 if (isReloading) {
                     reloadTimer -= delta;
@@ -4002,7 +4625,52 @@ hitEnemy.userData.hp -= finalDmg;
                     isGrounded = false;
                 }
 
-                playerGroup.rotation.y = yaw + Math.PI;
+              playerGroup.rotation.y = yaw + Math.PI;
+
+                // Плавный наклон героя в подкате (можно вертеть камерой и стрелять в процессе!)
+                const tLeanX = slideTimer > 0 ? (playerGroup.userData.slideTargetX || 0) : 0;
+                const tLeanZ = slideTimer > 0 ? (playerGroup.userData.slideTargetZ || 0) : 0;
+                slideLeanX = THREE.MathUtils.lerp(slideLeanX, tLeanX, Math.min(1, delta * 14));
+                slideLeanZ = THREE.MathUtils.lerp(slideLeanZ, tLeanZ, Math.min(1, delta * 14));
+                playerGroup.rotation.x = slideLeanX;
+                playerGroup.rotation.z = slideLeanZ;
+
+                // Анимация замаха и рубящего удара топором
+                if (axeSwingActive && axeMesh) {
+                    axeSwingTime += delta;
+                    const dur = 0.52;
+                    const p = Math.min(1, axeSwingTime / dur);
+                    const rArm = playerGroup.userData.parts.rightArm;
+
+                if (p < 0.36) {
+                        // Фаза 1: Тяжёлый вертикальный замах над головой
+                        const k = p / 0.36;
+                        axeMesh.rotation.x = k * 1.85;
+                        axeMesh.rotation.z = 0;
+                        if (rArm) rArm.rotation.x = k * 1.45;
+                    } else if (p < 0.60) {
+                        // Фаза 2: Резкий вертикальный разрубающий удар сверху вниз
+                        const k = (p - 0.36) / 0.24;
+                        axeMesh.rotation.x = 1.85 - k * 3.65;
+                        axeMesh.rotation.z = 0.08 * k;
+                        if (rArm) rArm.rotation.x = 1.45 - k * 2.85;
+                        if (!axeHitTriggered && p >= 0.48) {
+                            axeHitTriggered = true;
+                            executeAxeStrike();
+                        }
+                    } else {
+                        // Фаза 3: Возврат топора в стойку
+                        const k = (p - 0.60) / 0.40;
+                        axeMesh.rotation.x = THREE.MathUtils.lerp(-1.80, 0, k);
+                        axeMesh.rotation.z = THREE.MathUtils.lerp(0.08, 0, k);
+                        if (rArm) rArm.rotation.x = THREE.MathUtils.lerp(-1.40, 0, k);
+                    }
+                    if (p >= 1) {
+                        axeSwingActive = false;
+                        axeMesh.rotation.set(0, 0, 0);
+                        if (rArm) rArm.rotation.x = 0;
+                    }
+                }
 
                
 
@@ -4272,15 +4940,10 @@ hitEnemy.userData.hp -= finalDmg;
                     const groundY = getGroundHeight(b.mesh.position);
                     const hitGround = b.mesh.position.y <= groundY;
 
-                  if (hitPlayer) {
-                        // Если попал камень - урон огромный, если пуля - обычный
-                        playerHp -= b.damage || 10;
-                        document.getElementById('player-hp').innerText = 'HP: ' + Math.max(0, playerHp);
+                if (hitPlayer) {
+                        damagePlayer(b.damage || 10);
                         scene.remove(b.mesh);
                         enemyBullets.splice(i, 1);
-                        if (playerHp <= 0) {
-                            triggerGameOver(); // Вызываем красивый экран смерти
-                        }
                     } else if (hitWall || hitGround || b.life <= 0) {
                         scene.remove(b.mesh);
                         enemyBullets.splice(i, 1);
@@ -4400,17 +5063,44 @@ hitEnemy.userData.hp -= finalDmg;
                     muzzleFlashLight.intensity = Math.max(0, muzzleFlashLight.intensity - delta * 35.0);
                 }
 
-             // Камера (опускается при скольжении)
-                const camHeight = slideTimer > 0 ? 1.35 : 2.15;
-                const camOffset = new THREE.Vector3(0.85, camHeight, -2.8);
-                camOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
-                camOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        // Камера: переключение плеча [Q] + прицеливание [ПКМ] + подкат [C/Shift] + отдача
+                shoulderLerp = THREE.MathUtils.lerp(shoulderLerp, shoulderSide, Math.min(1, delta * 10));
+                aimLerp = THREE.MathUtils.lerp(aimLerp, isAiming ? 1 : 0, Math.min(1, delta * 12));
+                slideCamDrop = THREE.MathUtils.lerp(slideCamDrop, slideTimer > 0 ? 0.9 : 0, Math.min(1, delta * 12));
+
+                // Зум FOV при прицеливании и легкое расширение в подкате
+                const adsFov = currentSlot === 3 ? 60 : 52;
+                const targetFov = THREE.MathUtils.lerp(slideTimer > 0 ? 81 : 75, adsFov, aimLerp);
+                if (Math.abs(camera.fov - targetFov) > 0.05) {
+                    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, delta * 12));
+                    camera.updateProjectionMatrix();
+                }
+
+                const effPitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, pitch + recoilPitch));
+                const effYaw = yaw + recoilYaw;
+
+                const camHeight = 2.15 - slideCamDrop - aimLerp * 0.15;
+                const camSide = THREE.MathUtils.lerp(0.85, 0.58, aimLerp) * shoulderLerp;
+                const camBack = THREE.MathUtils.lerp(-2.8, -1.85, aimLerp);
+
+                const camOffset = new THREE.Vector3(camSide, camHeight, camBack);
+                camOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), effPitch);
+                camOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), effYaw);
                 camera.position.copy(playerGroup.position).add(camOffset);
 
-                const lookOffset = new THREE.Vector3(0.4, camHeight - 0.3, 10);
-                lookOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
-                lookOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+                const lookOffset = new THREE.Vector3(0.4 * shoulderLerp * (1 - aimLerp * 0.3), camHeight - 0.25, 10);
+                lookOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), effPitch);
+                lookOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), effYaw);
                 camera.lookAt(playerGroup.position.clone().add(lookOffset));
+
+             // Фонарь бьёт от груди/плеча героя ровно туда, куда смотрит прицел
+                const aimDir = new THREE.Vector3();
+                camera.getWorldDirection(aimDir);
+                const lampOrigin = playerGroup.position.clone().add(new THREE.Vector3(0, 1.45 - slideCamDrop * 0.5, 0)).addScaledVector(aimDir, 0.55);
+                flashlight.position.copy(lampOrigin);
+                flashlight.target.position.copy(lampOrigin).addScaledVector(aimDir, 20);
+
+                muzzleFlashLight.position.x = 0.6 * shoulderLerp;
 
                 // === СИНХРОНИЗАЦИЯ УШЕЙ ИГРОКА (3D АУДИО) ===
                 if (typeof audioCtx !== 'undefined' && audioCtx.listener) {
@@ -4626,9 +5316,87 @@ hitEnemy.userData.hp -= finalDmg;
             loadLeaderboard(tab);
         }
 
-        function loadLeaderboard(tab) {
-            if (typeof socket !== 'undefined') {
-                socket.emit('get_leaderboard', tab);
+      function renderLocalLeaderboardFallback() {
+            const tbody = document.getElementById('lb-table-body');
+            if (!tbody) return;
+            const localList = JSON.parse(localStorage.getItem('gothic_local_lb') || '[]');
+            if (localList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#666; padding:20px;">No records yet</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = '';
+            localList.slice(0, 10).forEach((entry, index) => {
+                const tr = document.createElement('tr');
+                const rankClass = index === 0 ? 'lb-rank-1' : (index === 1 ? 'lb-rank-2' : (index === 2 ? 'lb-rank-3' : ''));
+                tr.innerHTML = `<td class="${rankClass}">${index + 1}</td><td>${entry.name}</td><td style="text-align:right; color:#ffaa00; font-weight:bold;">${entry.score} (W${entry.wave})</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+    // === НАСТРОЙКИ SUPABASE ===
+        const SUPABASE_URL = "https://gfdwfwopghvajqogdhwo.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_7Vqafjl-iQNBB657xv2ogA_wcavkzQi";
+
+        async function saveScoreToSupabase(name, scoreVal, waveVal) {
+            if (!SUPABASE_URL.includes('supabase.co') || scoreVal <= 0) return;
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/leaderboard`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify({
+                        name: (name || 'Unknown Hero').slice(0, 18),
+                        score: Math.round(scoreVal),
+                        wave: waveVal || 1
+                    })
+                });
+            } catch (e) {
+                console.error('Ошибка отправки в Supabase:', e);
+            }
+        }
+
+        async function loadLeaderboard(tab) {
+            const st = document.getElementById('lb-status');
+            const tbody = document.getElementById('lb-table-body');
+            if (!tbody) return;
+
+            if (st) { st.innerText = '⏳ Loading...'; st.style.color = '#ffaa00'; }
+
+            try {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/leaderboard?select=name,score,wave&order=score.desc&limit=15`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY
+                    }
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const list = await res.json();
+
+                if (st) { st.innerText = '🟢 Global Leaderboard (Online)'; st.style.color = '#00ff88'; }
+                tbody.innerHTML = '';
+
+                if (!list || list.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#666; padding:20px;">No records yet — be the first!</td></tr>`;
+                    return;
+                }
+
+                list.forEach((entry, index) => {
+                    const tr = document.createElement('tr');
+                    const rankClass = index === 0 ? 'lb-rank-1' : (index === 1 ? 'lb-rank-2' : (index === 2 ? 'lb-rank-3' : ''));
+                    const safeName = String(entry.name || 'Hero').replace(/</g, '&lt;');
+                    tr.innerHTML = `
+                        <td class="${rankClass}">${index + 1}</td>
+                        <td>${safeName}</td>
+                        <td style="text-align:right; color:#ffaa00; font-weight:bold;">${entry.score} <span style="color:#777; font-size:12px;">(W${entry.wave})</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.warn('Supabase error:', err);
+                if (st) { st.innerText = '🟡 Offline — showing local records'; st.style.color = '#ffaa00'; }
+                renderLocalLeaderboardFallback();
             }
         }
 
@@ -4706,14 +5474,13 @@ hitEnemy.userData.hp -= finalDmg;
             const bgmGame = document.getElementById('bgm-game');
             if (bgmGame) bgmGame.pause();
 
-            if (typeof socket !== 'undefined') {
-                socket.emit('submit_score', { 
-                    name: playerName || 'Unknown Hero', 
-                    address: userWalletAddress || '',
-                    score: score,
-                    wave: currentWave
-                });
-            }
+         // Сохраняем локально, чтобы рекорд был виден даже если Render спит
+            const localList = JSON.parse(localStorage.getItem('gothic_local_lb') || '[]');
+            localList.push({ name: playerName || 'Unknown Hero', score: score, wave: currentWave });
+            localList.sort((a, b) => b.score - a.score);
+            localStorage.setItem('gothic_local_lb', JSON.stringify(localList.slice(0, 20)));
+
+           saveScoreToSupabase(playerName || 'Unknown Hero', score, currentWave);
 
             const goScreen = document.getElementById('game-over-screen');
             const finalScoreLabel = document.getElementById('final-score-display');
