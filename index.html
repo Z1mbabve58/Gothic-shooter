@@ -263,14 +263,20 @@
         <button id="btn-close-guide" style="font-size: 20px; margin-top: 10px; background:#ffaa00; color:#000; border:none; padding:10px 16px; cursor:pointer; font-family: 'Pirata One', cursive; border-radius: 6px; transition: 0.2s;">GOT IT</button>
     </div>
 
-    <div id="settings-modal">
-        <h2 style="font-family: 'Pirata One', cursive; font-size: 32px; color: #b30000; text-align: center;">Settings</h2>
-        <div class="setting-row"><span>Mouse Sensetivity</span><input type="range" id="sens-slider" min="1" max="10" value="3"></div>
+   <div id="settings-modal">
+        <h2 id="settings-title" style="font-family: 'Pirata One', cursive; font-size: 32px; color: #ffaa00; text-align: center;">Settings</h2>
+        <div class="setting-row"><span>Mouse Sensitivity</span><input type="range" id="sens-slider" min="1" max="10" value="3"></div>
         <div class="setting-row"><span>Sound Volume</span><input type="range" id="vol-slider" min="0" max="100" value="80"></div>
-       <div style="font-size: 12px; color: #777; line-height: 1.6; border-top: 1px solid #222; padding-top: 12px;">
-    Controls:<br>• WASD — Move | Shift — Sprint | Space — Jump<br>• 1: Sniper | 2: Rifle | 3: Shotgun<br>• LMB — Shoot | Esc — Menu
-</div>
-      <button id="btn-close-settings" style="font-size: 18px; margin-top: 6px; background:#fff; border:none; padding:8px 16px; cursor:pointer; font-family: 'Pirata One', cursive;">Close</button>
+        <div style="font-size: 12px; color: #aaa; line-height: 1.65; border-top: 1px solid #222; padding-top: 12px;">
+            <b style="color:#ffaa00;">Controls:</b><br>
+            • WASD — Move | C / Shift — Slide | Space — Jump<br>
+            • 1: Axe | 2: Rifle | 3: Shotgun | R — Reload<br>
+            • LMB — Shoot / Strike | RMB — Aim | Q — Switch Shoulder<br>
+            • E — Fuel Fire / Repair Barricade | ESC — Pause
+        </div>
+        <button id="btn-resume-game" style="display:none; font-size: 18px; background:#ffaa00; color:#000; font-weight:bold; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-family: 'Share Tech Mono', monospace;">▶ RESUME GAME</button>
+        <button id="btn-exit-menu" style="display:none; font-size: 16px; background:#3a1212; color:#ff6666; border:1px solid #b30000; padding:9px 16px; border-radius:6px; cursor:pointer; font-family: 'Share Tech Mono', monospace;">EXIT TO MAIN MENU</button>
+        <button id="btn-close-settings" style="font-size: 18px; margin-top: 4px; background:#fff; color:#000; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-family: 'Pirata One', cursive;">Close</button>
     </div>
 
     <!-- Окно Лидерборда -->
@@ -1119,9 +1125,33 @@ socket.on('profile_data', (profile) => {
         checkWalletConnectionOnLoad();
         // ===============================================
        // ===============================================
-        document.getElementById('btn-settings').addEventListener('click', () => { settingsModal.style.display = 'flex'; });
-        document.getElementById('btn-close-settings').addEventListener('click', () => { settingsModal.style.display = 'none'; });
+       let isPaused = false;
 
+        document.getElementById('btn-settings').addEventListener('click', () => {
+            document.getElementById('settings-title').innerText = 'Settings';
+            document.getElementById('btn-resume-game').style.display = 'none';
+            document.getElementById('btn-exit-menu').style.display = 'none';
+            document.getElementById('btn-close-settings').style.display = 'block';
+            settingsModal.style.display = 'flex';
+        });
+
+        document.getElementById('btn-close-settings').addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        document.getElementById('btn-resume-game').addEventListener('click', () => {
+            isPaused = false;
+            gameActive = true;
+            settingsModal.style.display = 'none';
+            const bgmGame = document.getElementById('bgm-game');
+            if (bgmGame) { bgmGame.volume = soundVolume; bgmGame.play().catch(() => {}); }
+            document.body.requestPointerLock();
+        });
+
+        document.getElementById('btn-exit-menu').addEventListener('click', () => {
+            // Полный чистый выход в главное меню без зависших волн и звуков
+            location.reload();
+        });
         // ЛОГИКА ОКНА GUIDE
         const guideModal = document.getElementById('guide-modal');
         document.getElementById('btn-guide').addEventListener('click', () => { guideModal.style.display = 'flex'; });
@@ -1238,12 +1268,24 @@ socket.on('match_found', async (matchData) => {
     }
 });
 
-        document.addEventListener('pointerlockchange', () => {
+    document.addEventListener('pointerlockchange', () => {
             if (document.pointerLockElement !== document.body) {
                 if (gameActive) {
-                    mainMenu.style.display = 'block';
-                    hud.style.display = 'none';
                     gameActive = false;
+                    isPaused = true;
+                    isMouseDown = false;
+                    isAiming = false;
+
+                    // Ставим боевую музыку на паузу
+                    const bgmGame = document.getElementById('bgm-game');
+                    if (bgmGame) bgmGame.pause();
+
+                    // Открываем меню паузы (настройки + управление + продолжить/выйти)
+                    document.getElementById('settings-title').innerText = 'PAUSED';
+                    document.getElementById('btn-resume-game').style.display = 'block';
+                    document.getElementById('btn-exit-menu').style.display = 'block';
+                    document.getElementById('btn-close-settings').style.display = 'none';
+                    settingsModal.style.display = 'flex';
                 }
             }
         });
@@ -1814,11 +1856,8 @@ const tentBounds = { minX: fireX - 3.3, maxX: fireX + 3.3, minZ: fireZ - 8.4, ma
         fireHud.style.cssText = 'display:none; position:fixed; top:16px; left:50%; transform:translateX(-50%); background:rgba(5,5,8,0.88); color:#ffb366; padding:8px 18px; border-radius:8px; font-family:monospace; font-size:15px; border:1px solid #ff6611; z-index:100; pointer-events:none; text-align:center; box-shadow: 0 0 12px rgba(255,102,17,0.3); transition: all 0.4s ease;';
         document.body.appendChild(fireHud);
 
-        function isGameplayActive() {
-            if (document.pointerLockElement) return true;
-            if (typeof gameStarted !== 'undefined' && gameStarted) return true;
-            if (typeof isPlaying !== 'undefined' && isPlaying) return true;
-            return false;
+    function isGameplayActive() {
+            return gameActive === true;
         }
 
         // Автоматическое определение номера текущей волны
@@ -2693,7 +2732,8 @@ const tentBounds = { minX: fireX - 3.3, maxX: fireX + 3.3, minZ: fireZ - 8.4, ma
             showKillBanner(`🔨 REPAIRED: ${percent}%`, false);
         }
 
-        function updateAllMobAnimations(time) {
+     function updateAllMobAnimations(time) {
+            if (!gameActive) return; // Полная заморозка мобов и босса на паузе
             let pPos = null;
             if (typeof player !== 'undefined' && player.position) pPos = player.position;
             else if (typeof playerMesh !== 'undefined' && playerMesh.position) pPos = playerMesh.position;
