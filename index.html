@@ -279,18 +279,13 @@
             <h2>LEADERBOARD</h2>
             <button class="lb-close" id="btn-lb-close">&times;</button>
         </div>
-        <div id="lb-status" style="font-size:12px; color:#888; margin-top:6px;">Connecting to server...</div>
-        <div class="lb-tabs">
-            <button class="lb-tab-btn active" onclick="switchLbTab('training')">Training</button>
-            <button class="lb-tab-btn" onclick="switchLbTab('duel_weekly')">Weekly Duels</button>
-            <button class="lb-tab-btn" onclick="switchLbTab('duel_monthly')">Monthly Duels</button>
-        </div>
+      <div id="lb-status" style="font-size:12px; color:#888; margin:8px 0 12px 0;">Loading...</div>
         <table class="lb-table">
             <thead>
                 <tr>
                     <th>#</th>
                     <th>Player</th>
-                    <th id="lb-val-col-title" style="text-align: right;">Score / Wave</th>
+                    <th id="lb-val-col-title" style="text-align: right;">Score</th>
                 </tr>
             </thead>
             <tbody id="lb-table-body">
